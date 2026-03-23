@@ -1,0 +1,149 @@
+/* ─── LUMINA — Preset Grid & Tile Styles ─── */
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  animation: fadeIn 0.6s ease both 0.1s;
+}
+
+/* ─── Tile ─── */
+
+.preset-tile {
+  position: relative;
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+  justify-content: center;
+  transition:
+    transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    background 0.6s ease,
+    border-color 0.4s ease,
+    box-shadow 0.6s ease;
+}
+
+.preset-tile:active {
+  transform: scale(0.96);
+}
+
+.preset-tile--featured {
+  grid-column: 1 / -1;
+  min-height: 72px;
+}
+
+.preset-tile--active {
+  background: linear-gradient(
+    135deg,
+    rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.12) 0%,
+    var(--surface) 100%
+  );
+  border-color: rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.35);
+  box-shadow:
+    0 0 24px rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.15),
+    0 0 48px rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.06),
+    inset 0 1px 0 rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.1);
+}
+
+/* ─── Tile internals ─── */
+
+.tile-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.4s ease;
+}
+
+.tile-dot--active {
+  box-shadow: 0 0 8px currentColor;
+}
+
+.tile-name {
+  font-family: "Syne", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: color 0.4s ease;
+}
+
+.tile-name--featured {
+  font-size: 15px;
+}
+
+.tile-name--active {
+  color: var(--text);
+}
+
+.tile-desc {
+  font-family: "DM Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  padding-left: 16px;
+  transition: color 0.4s ease;
+}
+
+/* ─── Off Button ─── */
+
+.off-btn {
+  width: 100%;
+  padding: 14px 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-family: "Syne", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.off-btn--off {
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3);
+  color: var(--accent);
+}
+
+/* ─── Custom Trigger ─── */
+
+.custom-trigger {
+  width: 100%;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: "DM Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.custom-trigger__arrow {
+  font-size: 16px;
+  line-height: 1;
+}
