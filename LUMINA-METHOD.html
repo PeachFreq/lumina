@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUMINA METHOD — A Framework for Human-AI Co-Building</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ─── Reset & Base ─── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+font-size: 17px;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+}
+
+body {
+background: #0E0C14;
+color: #D4D0DE;
+font-family: ‘Syne’, ‘Helvetica Neue’, sans-serif;
+line-height: 1.72;
+min-height: 100vh;
+}
+
+/* ─── Layout ─── */
+.page {
+max-width: 680px;
+margin: 0 auto;
+padding: 72px 28px 120px;
+}
+
+/* ─── Noise overlay ─── */
+body::before {
+content: ‘’;
+position: fixed;
+inset: 0;
+pointer-events: none;
+z-index: 9999;
+opacity: 0.028;
+background: url(“data:image/svg+xml,%3Csvg xmlns=‘http://www.w3.org/2000/svg’ width=‘300’ height=‘300’%3E%3Cfilter id=‘n’%3E%3CfeTurbulence type=‘fractalNoise’ baseFrequency=‘0.75’ numOctaves=‘4’ stitchTiles=‘stitch’/%3E%3C/filter%3E%3Crect width=‘100%25’ height=‘100%25’ filter=‘url(%23n)’/%3E%3C/svg%3E”);
+}
+
+/* ─── Typography ─── */
+h1 {
+font-family: ‘Syne’, sans-serif;
+font-weight: 800;
+font-size: 2.6rem;
+letter-spacing: 0.12em;
+text-transform: uppercase;
+color: #E8E4F0;
+line-height: 1.15;
+margin-bottom: 8px;
+}
+
+.subtitle {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.72rem;
+font-weight: 400;
+letter-spacing: 0.1em;
+text-transform: uppercase;
+color: #7B7490;
+margin-bottom: 56px;
+}
+
+h2 {
+font-family: ‘Syne’, sans-serif;
+font-weight: 700;
+font-size: 1.12rem;
+letter-spacing: 0.14em;
+text-transform: uppercase;
+color: #E8E4F0;
+margin-top: 64px;
+margin-bottom: 24px;
+padding-bottom: 10px;
+border-bottom: 1px solid #2A2636;
+}
+
+h2 .section-num {
+color: #E5006A;
+margin-right: 10px;
+}
+
+h3 {
+font-family: ‘Syne’, sans-serif;
+font-weight: 700;
+font-size: 0.92rem;
+letter-spacing: 0.06em;
+color: #E5006A;
+margin-top: 36px;
+margin-bottom: 10px;
+}
+
+p {
+margin-bottom: 18px;
+font-weight: 400;
+font-size: 1rem;
+}
+
+strong {
+color: #E8E4F0;
+font-weight: 600;
+}
+
+em {
+font-style: italic;
+color: #B0AABE;
+}
+
+a {
+color: #E5006A;
+text-decoration: none;
+border-bottom: 1px solid #E5006A44;
+transition: border-color 0.2s;
+}
+a:hover { border-color: #E5006A; }
+
+/* ─── Epigraph ─── */
+.epigraph {
+margin: 48px 0 56px;
+padding-left: 20px;
+border-left: 2px solid #E5006A44;
+}
+.epigraph p {
+font-family: ‘Syne’, sans-serif;
+font-size: 1.08rem;
+font-weight: 400;
+color: #B0AABE;
+font-style: italic;
+line-height: 1.65;
+margin-bottom: 8px;
+}
+.epigraph .attr {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.7rem;
+font-style: normal;
+color: #5A5470;
+letter-spacing: 0.04em;
+}
+
+/* ─── Callout blocks ─── */
+.callout {
+background: linear-gradient(135deg, rgba(229, 0, 106, 0.06) 0%, rgba(14, 12, 20, 0) 100%);
+border: 1px solid rgba(229, 0, 106, 0.18);
+border-radius: 10px;
+padding: 22px 24px;
+margin: 28px 0;
+}
+.callout p {
+margin-bottom: 0;
+font-family: ‘DM Mono’, monospace;
+font-size: 0.82rem;
+line-height: 1.7;
+color: #C0BACE;
+letter-spacing: 0.01em;
+}
+.callout .callout-label {
+font-family: ‘Syne’, sans-serif;
+font-size: 0.68rem;
+font-weight: 700;
+letter-spacing: 0.16em;
+text-transform: uppercase;
+color: #E5006A;
+display: block;
+margin-bottom: 8px;
+}
+
+/* ─── Pull quote ─── */
+.pull-quote {
+margin: 44px 0;
+padding: 0 8px;
+text-align: center;
+}
+.pull-quote p {
+font-family: ‘Syne’, sans-serif;
+font-size: 1.3rem;
+font-weight: 600;
+color: #E8E4F0;
+line-height: 1.5;
+margin-bottom: 0;
+}
+.pull-quote .pq-accent {
+color: #E5006A;
+}
+.pull-quote::before,
+.pull-quote::after {
+content: ‘’;
+display: block;
+width: 40px;
+height: 1px;
+background: #E5006A44;
+margin: 20px auto;
+}
+
+/* ─── Diagram ─── */
+.diagram {
+margin: 36px 0;
+padding: 32px 28px;
+background: #12101A;
+border: 1px solid #2A2636;
+border-radius: 12px;
+overflow-x: auto;
+}
+
+.role-row {
+display: flex;
+align-items: stretch;
+gap: 16px;
+margin-bottom: 14px;
+}
+.role-row:last-child { margin-bottom: 0; }
+
+.role-card {
+flex: 1;
+background: #18162200;
+border: 1px solid #2A2636;
+border-radius: 8px;
+padding: 18px 16px;
+min-width: 0;
+transition: border-color 0.3s;
+}
+
+.role-card .role-name {
+font-family: ‘Syne’, sans-serif;
+font-size: 0.78rem;
+font-weight: 700;
+letter-spacing: 0.12em;
+text-transform: uppercase;
+color: #E8E4F0;
+margin-bottom: 4px;
+}
+
+.role-card .role-type {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.65rem;
+letter-spacing: 0.05em;
+color: #E5006A;
+margin-bottom: 10px;
+display: block;
+}
+
+.role-card .role-desc {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.72rem;
+line-height: 1.6;
+color: #7B7490;
+}
+
+.arrow-row {
+display: flex;
+justify-Content: center;
+gap: 16px;
+margin: 6px 0;
+}
+.arrow-row .arrow {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.75rem;
+color: #4A4460;
+text-align: center;
+flex: 1;
+}
+
+/* ─── Timeline ─── */
+.timeline {
+margin: 28px 0;
+padding-left: 20px;
+border-left: 2px solid #2A2636;
+}
+.timeline-item {
+position: relative;
+margin-bottom: 20px;
+padding-left: 16px;
+}
+.timeline-item::before {
+content: ‘’;
+position: absolute;
+left: -25px;
+top: 8px;
+width: 8px;
+height: 8px;
+border-radius: 50%;
+background: #E5006A;
+box-shadow: 0 0 8px #E5006A66;
+}
+.timeline-item .tl-time {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.68rem;
+color: #5A5470;
+letter-spacing: 0.04em;
+margin-bottom: 2px;
+}
+.timeline-item .tl-event {
+font-family: ‘Syne’, sans-serif;
+font-size: 0.88rem;
+font-weight: 600;
+color: #E8E4F0;
+margin-bottom: 2px;
+}
+.timeline-item .tl-desc {
+font-size: 0.88rem;
+color: #7B7490;
+line-height: 1.55;
+}
+
+/* ─── Principle list ─── */
+.principle {
+margin: 32px 0;
+}
+.principle .p-number {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.72rem;
+color: #E5006A;
+letter-spacing: 0.08em;
+display: block;
+margin-bottom: 4px;
+}
+.principle .p-name {
+font-family: ‘Syne’, sans-serif;
+font-size: 1rem;
+font-weight: 700;
+color: #E8E4F0;
+letter-spacing: 0.03em;
+margin-bottom: 8px;
+}
+.principle .p-body {
+font-size: 0.94rem;
+color: #B0AABE;
+line-height: 1.72;
+}
+
+/* ─── Divider ─── */
+.divider {
+width: 40px;
+height: 1px;
+background: #E5006A44;
+margin: 56px auto;
+}
+
+/* ─── Footer ─── */
+.footer {
+margin-top: 80px;
+padding-top: 28px;
+border-top: 1px solid #2A2636;
+text-align: center;
+}
+.footer p {
+font-family: ‘DM Mono’, monospace;
+font-size: 0.68rem;
+color: #4A4460;
+letter-spacing: 0.06em;
+margin-bottom: 6px;
+}
+
+/* ─── Print ─── */
+@media print {
+body { background: #0E0C14 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { padding: 40px 20px; }
+}
+</style>
+
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── Title ─── -->
+
+  <h1>Lumina<br>Method</h1>
+  <div class="subtitle">A Framework for Human-AI Co-Building &nbsp;·&nbsp; March 2026</div>
+
+  <div class="epigraph">
+    <p>Ninety minutes from "can you find my LIFX bulb?" to a dark-mode cyberpunk PWA installed on an iPhone home screen. No boilerplate. No handoffs lost in translation. No prototype that needed to be thrown away.</p>
+    <span class="attr">— Session log, 21 Mar 2026</span>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <!-- 1. THE SESSION                          -->
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <h2><span class="section-num">01</span> The Session</h2>
+
+  <p>It starts with a UDP broadcast. Tex — a persistent Claude-based agent running on a Mac Mini in Cody's apartment — sends a raw discovery packet on port 56700 and finds a LIFX smart bulb at 192.168.68.72. No app store, no cloud account, no API key. Just a device on a local network and an AI that knows how to talk to it.</p>
+
+  <p>What follows is a ninety-minute sprint that produces a complete smart-lighting control system: a Python controller with seven named presets, a FastAPI backend, a React PWA called <strong>LUMINA</strong> with a cyberpunk aesthetic, and a GitHub repository with a clean commit history. The app is installed to an iPhone home screen before midnight.</p>
+
+  <p>The interesting part is not the speed. It's the shape of the process — the way different kinds of intelligence were sequenced and combined. Cody, a physicist turned builder, was in the room the entire time, physically experiencing each lighting change. Tex handled orchestration, system-level work, and the mechanical act of building. A separate Claude instance with extended thinking wrote the design spec. A Claude Code sub-agent did the final implementation pass. Each entity did what it was best at. Nothing was asked to operate outside its natural register.</p>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <div class="tl-time">min 0–8</div>
+      <div class="tl-event">Discovery</div>
+      <div class="tl-desc">Raw UDP broadcast finds LIFX bulb on LAN. No cloud. No setup.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-time">min 8–35</div>
+      <div class="tl-event">Preset Tuning</div>
+      <div class="tl-desc">Seven presets built live. Tex proposes values; Cody gives real-time embodied feedback. Locked in: morning, reading, relax, dim, sleep, cinema, velvet.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-time">min 35–48</div>
+      <div class="tl-event">Spec Prompt</div>
+      <div class="tl-desc">Cody asks Tex to write a comprehensive design brief — not to build the app, but to write the prompt that will produce the spec.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-time">min 48–62</div>
+      <div class="tl-event">Opus Spec</div>
+      <div class="tl-desc">Claude Opus 4.6 returns LUMINA-SPEC.md: color system, typography, component states, layout math, API contract, complete backend code.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-time">min 62–80</div>
+      <div class="tl-event">Build</div>
+      <div class="tl-desc">Claude Code sub-agent implements the spec. Wires components, fixes subprocess calls, generates PWA icons. Clean build pass.</div>
+    </div>
+    <div class="timeline-item">
+      <div class="tl-time">min 80–90</div>
+      <div class="tl-event">Ship</div>
+      <div class="tl-desc">Git init, push to GitHub, start both servers. Open Safari, install to home screen. Done.</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <!-- 2. WHAT WORKED                          -->
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <h2><span class="section-num">02</span> What Worked</h2>
+
+  <p>Several things about this session were non-obvious. Here are the principles we'd isolate if we wanted to replicate it.</p>
+
+  <div class="principle">
+    <span class="p-number">01</span>
+    <div class="p-name">Embodied Feedback Collapses the Iteration Cycle</div>
+    <div class="p-body">Cody wasn't reviewing screenshots or reading JSON. He was sitting in the room as the light changed around him. When Tex set <strong>velvet</strong> to 40% brightness, Cody didn't say "that's roughly right" — he said "drop to 32%," because he could feel the difference in his peripheral vision. This kind of feedback is impossible to simulate. The human's body becomes a sensor that no amount of prompt engineering can replace. Every preset was locked in fewer than three iterations because the feedback loop was instantaneous and grounded in physical reality.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">02</span>
+    <div class="p-name">Discovery Before Specification</div>
+    <div class="p-body">The session started with exploration, not planning. Tex found the bulb, built the controller, tested presets — and only then did anyone think about a web UI. This meant the spec was written with full knowledge of the material: what the bulb could actually do, which color temperatures felt right at which brightness levels, how fast transitions landed. A spec written before that discovery phase would have been speculative. The one written after it was grounded.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">03</span>
+    <div class="p-name">Aesthetic Precision Over Aesthetic Vagueness</div>
+    <div class="p-body">The design brief didn't say "modern and clean." It said <em>Blade Runner 2049 UI, Teenage Engineering, citizenM hotel room panel.</em> It named specific typefaces (Syne, DM Mono), a specific background hex (#0E0C14 with faint violet tint), and a specific accent color (#E5006A matched to a real hotel's lighting). This level of specificity constrains the solution space enough that a model can make confident decisions instead of defaulting to safe, generic choices. Taste has to be transmitted at high resolution or it gets lost.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">04</span>
+    <div class="p-name">The Spec Is the Leverage Point</div>
+    <div class="p-body">The decision to write a spec before writing code was the single highest-leverage move in the session. Without it, a coding agent would have made hundreds of micro-decisions about color, spacing, typography, animation easing, and API shape — each one a potential deviation from intent. The spec compressed all of those decisions into one document, reviewed once by a human, then executed mechanically. This is the difference between directing and hoping.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">05</span>
+    <div class="p-name">Prompt the Prompt</div>
+    <div class="p-body">Cody didn't write the spec prompt himself. He asked Tex to write it. This is a meta-move that's easy to overlook: Tex had full context on the presets, the hardware constraints, the existing tech stack, and the aesthetic direction. Cody had taste and intent. By having Tex draft the prompt and Cody review it, the prompt was both technically complete and aesthetically aligned. The human contributes judgment; the agent contributes thoroughness.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">06</span>
+    <div class="p-name">Proven Stack, Zero Architecture Debate</div>
+    <div class="p-body">The tech stack — React + Vite + FastAPI, hosted locally on a Mac Mini — was already validated by an existing app Cody uses daily (Sovereign Work Tracker). There was zero time spent evaluating frameworks, debating deployment strategies, or setting up infrastructure. When your stack is proven, the entire conversation can be about the product instead of the plumbing.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">07</span>
+    <div class="p-name">Optimistic State, Fire-and-Forget</div>
+    <div class="p-body">The UI updates instantly on tap, then sends the API call in the background. For a LAN-only app controlling a single bulb, this is the correct call: the network round-trip is sub-10ms, failure is rare, and the cost of optimism is near zero. The spec made this decision explicitly rather than leaving it for the builder to figure out. Small UX calls like this compound — they're the difference between an app that feels alive and one that feels sluggish.</div>
+  </div>
+
+  <div class="pull-quote">
+    <p>The spec is not documentation. It is a <span class="pq-accent">compression artifact</span> — a way to transmit intent at a resolution high enough that the builder doesn't need to improvise.</p>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <!-- 3. THE THREE-ROLE MODEL                 -->
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <h2><span class="section-num">03</span> The Three-Role Model</h2>
+
+  <p>Three distinct AI instances participated in this build, and they were never asked to do each other's jobs. This separation was not planned in advance — it emerged naturally — but in retrospect, it's the structural reason the process worked.</p>
+
+  <div class="diagram">
+    <div class="role-row">
+      <div class="role-card">
+        <div class="role-name">Tex</div>
+        <span class="role-type">Orchestrator · Persistent Agent</span>
+        <div class="role-desc">Holds full project context across the session. Discovers hardware, writes controllers, manages files, composes prompts, delegates to sub-agents, handles git and deployment. Thinks in systems.</div>
+      </div>
+      <div class="role-card">
+        <div class="role-name">Opus</div>
+        <span class="role-type">Design Intelligence · Spec Author</span>
+        <div class="role-desc">Receives a dense, context-rich brief and returns a comprehensive spec with extended thinking. Makes aesthetic and architectural decisions. Names the product. Produces the document that becomes the source of truth.</div>
+      </div>
+      <div class="role-card">
+        <div class="role-name">Claude Code</div>
+        <span class="role-type">Mechanical Builder · Sub-Agent</span>
+        <div class="role-desc">Receives the spec and scaffold files. Wires everything together. Fixes type errors, generates assets, runs the build. Does not make design decisions — executes the ones already made.</div>
+      </div>
+    </div>
+    <div class="arrow-row">
+      <div class="arrow">context + brief →</div>
+      <div class="arrow">spec + scaffold →</div>
+      <div class="arrow">→ working app</div>
+    </div>
+  </div>
+
+  <p>The insight here is about <strong>cognitive register</strong>. Orchestration, design thinking, and mechanical implementation are different modes of intelligence. They require different context windows, different levels of deliberation, and different tolerances for ambiguity. Tex operates in a long-running, stateful session where continuity matters. Opus operates in a single, deep-thinking pass where quality of reasoning matters. Claude Code operates in a tight execute-and-verify loop where correctness matters. Asking one model to do all three would degrade all three.</p>
+
+  <p>This mirrors how high-functioning human teams work: the project lead, the senior designer, and the engineer are rarely the same person — not because any one of them couldn't learn the other roles, but because the work is better when each person operates in their strongest register without context-switching.</p>
+
+  <div class="callout">
+    <span class="callout-label">Pattern</span>
+    <p>Orchestrator composes the brief. Thinker produces the spec. Builder executes the spec. Human holds the veto and the taste. No role crosses into another's lane.</p>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <!-- 4. THE SPEC PROMPT AS ARTIFACT          -->
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <h2><span class="section-num">04</span> The Spec Prompt as Artifact</h2>
+
+  <p>In most AI-assisted workflows, the prompt is ephemeral — typed into a chat box, used once, forgotten. In this session, the prompt was treated as a <em>first-class artifact</em>: written with care, reviewed before submission, and designed to produce a specific kind of output.</p>
+
+  <p>The spec prompt that Tex wrote was roughly 1,200 words. It included the preset table, named design references, explicit anti-patterns ("no gradients that look like gradients"), specific port numbers, file paths, and a ten-section output format. It was, in effect, a contract: here is exactly what I need you to think about, and here is exactly the shape I need the answer in.</p>
+
+  <p>This matters because the quality of a spec is bounded by the quality of the prompt that generates it. A vague prompt produces a vague spec. A spec full of "TBDs" and "to be decided by the implementer" defeats the entire purpose of having a spec in the first place. The prompt must be exhaustive enough that the spec author — human or AI — can make every decision without further input.</p>
+
+  <div class="callout">
+    <span class="callout-label">Key Insight</span>
+    <p>The prompt is not an instruction. It is a compression of context, constraints, and taste — packaged so that a separate intelligence can reconstruct your intent without being in the room with you. Invest in it accordingly.</p>
+  </div>
+
+  <p>There's also a durability argument. The spec prompt can be versioned, reused, and modified. When Cody adds a new preset next month, the prompt can be re-run with a single line changed. When he builds a different app — a music controller, a thermostat UI — the same structural template applies. The prompt becomes a personal pattern library.</p>
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <!-- 5. WHAT THIS GENERALIZES TO             -->
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <h2><span class="section-num">05</span> What This Generalizes To</h2>
+
+  <p>The LUMINA session happened to involve a smart bulb. The method is about something more general: <strong>how to move from a vague idea to a shipped product when your collaborator is an AI that can write code but can't see the room.</strong></p>
+
+  <p>The underlying pattern has five phases:</p>
+
+  <div class="principle">
+    <span class="p-number">Phase 1</span>
+    <div class="p-name">Discover the Material</div>
+    <div class="p-body">Before specifying anything, interact with the raw substrate of the project. If it's hardware, talk to it. If it's data, explore it. If it's a user problem, interview someone. The goal is to accumulate the kind of tacit knowledge that makes a spec grounded rather than speculative.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">Phase 2</span>
+    <div class="p-name">Iterate in the Real Environment</div>
+    <div class="p-body">Work in the medium where feedback is fastest and most honest. For lighting, that's a dark room. For a UI, that's a real phone in your hand. For an API, that's curl. Don't abstract too early. Let the constraints of reality inform the design before the design is written down.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">Phase 3</span>
+    <div class="p-name">Write the Spec Prompt</div>
+    <div class="p-body">Have your orchestrator agent draft a comprehensive brief that captures everything learned in Phases 1 and 2. Review it yourself. The prompt should be specific enough that the spec author can make every decision without asking follow-up questions. Name your references. Provide exact values. Specify the output format.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">Phase 4</span>
+    <div class="p-name">Generate and Review the Spec</div>
+    <div class="p-body">Send the prompt to a model optimized for deep reasoning. Review the output once, carefully. This is the last point where taste and judgment intervene. Everything downstream is execution.</div>
+  </div>
+
+  <div class="principle">
+    <span class="p-number">Phase 5</span>
+    <div class="p-name">Execute Mechanically</div>
+    <div class="p-body">Hand the spec to a coding agent with explicit instructions not to deviate. Let it build, test, and commit. The builder's job is fidelity, not creativity. Creativity happened in Phases 1–4.</div>
+  </div>
+
+  <p>This generalizes to any project where you have access to an AI that can write code, a proven tech stack, and a clear aesthetic or functional vision. The key requirement is a human who is willing to invest in the spec phase — to be precise about what they want before the building starts. The AI is fast enough that building the wrong thing twice still takes less time than one careful build. But building the right thing once feels incomparably better.</p>
+
+  <div class="pull-quote">
+    <p>Speed is a byproduct. The actual gain is <span class="pq-accent">fidelity</span> — the distance between what you imagined and what got built approaches zero.</p>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <!-- 6. MACHINE-READABLE COMPANION           -->
+
+  <!-- ═══════════════════════════════════════ -->
+
+  <h2><span class="section-num">06</span> Machine-Readable Companion</h2>
+
+  <p>This document is written for humans. A companion artifact — <strong>LUMINA-METHOD.md</strong> — will be developed separately as a structured markdown file optimized for AI agent ingestion. That file will encode the five-phase process, the three-role model, and the spec-prompt template in a format that Tex (or any future orchestrator agent) can reference directly when starting a new project.</p>
+
+  <p>The intent is that handing an agent the method file and saying "follow the LUMINA method" should be sufficient to reproduce the process shape described here — adapted to whatever material the new project involves.</p>
+
+  <div class="callout">
+    <span class="callout-label">Status</span>
+    <p>LUMINA-METHOD.md is pending. This document is the source material from which it will be derived.</p>
+  </div>
+
+  <!-- ─── Footer ─── -->
+
+  <div class="divider"></div>
+
+  <div class="footer">
+    <p>LUMINA METHOD &nbsp;·&nbsp; v1.0 &nbsp;·&nbsp; March 2026</p>
+    <p>Cody + Tex &nbsp;·&nbsp; San Francisco</p>
+    <p style="margin-top: 12px; color: #2A2636;">●</p>
+  </div>
+
+</div>
+</body>
+</html>
