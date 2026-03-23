@@ -3,7 +3,7 @@
  * Communicates with the FastAPI backend on port 8766.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8766";
+const API_BASE = import.meta.env.VITE_API_URL || "http://192.168.68.58:8766";
 
 export interface Preset {
   id: string;

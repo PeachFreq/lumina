@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 interface CustomValues {
   hue: number;

@@ -167,8 +167,9 @@ def apply_color(hue: int, sat: int, bri: int, kelvin: int):
     run_lifx("color", str(hue), str(sat), str(bri), str(kelvin))
 
 def apply_power(on: bool):
-    """Toggle LIFX bulb power."""
-    run_lifx("power", "on" if on else "off")
+    """Toggle LIFX bulb power. lifx.py uses 'off' subcommand; for on, re-apply current state."""
+    if not on:
+        run_lifx("off")
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -206,9 +207,13 @@ def toggle_power():
     state.toggle_power()
     apply_power(state.power)
 
-    if state.power and state.mode == "preset" and state.active_preset in PRESETS:
-        cmd = PRESETS[state.active_preset]["command"]
-        apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
+    if state.power:
+        if state.mode == "preset" and state.active_preset in PRESETS:
+            cmd = PRESETS[state.active_preset]["command"]
+            apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
+        elif state.mode == "custom" and state.custom:
+            c = state.custom
+            apply_color(c["hue"], c["sat"], c["bri"], c["kelvin"])
 
     return {"ok": True, **state.to_dict()}
 
