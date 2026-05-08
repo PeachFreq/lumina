@@ -6,13 +6,24 @@ Run: uvicorn api:app --host 0.0.0.0 --port 8766
 
 import subprocess
 import json
+import threading
+import time
 from pathlib import Path
 from typing import Optional
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from apscheduler.schedulers.background import BackgroundScheduler
 
-app = FastAPI(title="Lumina", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.start()
+    print("Scheduler started — nighttime automation active")
+    yield
+    scheduler.shutdown()
+
+app = FastAPI(title="Lumina", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,12 +58,12 @@ PRESETS = {
         "accent": "#E8A64C",
         "command": {"hue": 0, "sat": 0, "bri": 35, "kelvin": 2500},
     },
-    "dim": {
-        "id": "dim",
-        "name": "Dim",
-        "description": "warm white 15%, 2700K — very low ambient",
-        "accent": "#C49A52",
-        "command": {"hue": 0, "sat": 0, "bri": 15, "kelvin": 2700},
+    "honey": {
+        "id": "honey",
+        "name": "Honey",
+        "description": "amber-gold 25%, 2200K — warm reggae evening",
+        "accent": "#D4A034",
+        "command": {"hue": 45, "sat": 70, "bri": 25, "kelvin": 2200},
     },
     "sleep": {
         "id": "sleep",
@@ -170,6 +181,61 @@ def apply_power(on: bool):
     """Toggle LIFX bulb power. lifx.py uses 'off' subcommand; for on, re-apply current state."""
     if not on:
         run_lifx("off")
+
+# ---------------------------------------------------------------------------
+# Nightly automation
+# ---------------------------------------------------------------------------
+
+_fade_thread: Optional[threading.Thread] = None
+
+def nighttime_reading():
+    """9:25 PM — activate Honey preset for nighttime reading."""
+    print("[schedule] 9:25 PM — activating Honey preset")
+    preset = PRESETS["honey"]
+    cmd = preset["command"]
+    apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
+    if not state.power:
+        apply_power(True)
+    state.set_preset("honey")
+
+def nighttime_fade():
+    """9:50 PM — gently fade from Honey down to off over 10 minutes."""
+    global _fade_thread
+
+    def _fade():
+        honey = PRESETS["honey"]["command"]
+        start_bri = honey["bri"]  # 25
+        steps = 40  # one step every 15 seconds over 10 minutes
+        interval = 600.0 / steps  # 15s
+
+        print(f"[schedule] 9:50 PM — beginning fade to off ({steps} steps over 10 min)")
+
+        for i in range(1, steps + 1):
+            # If user manually changed the light, stop fading
+            if state.mode != "preset" or state.active_preset != "honey":
+                print("[schedule] fade cancelled — user changed the light")
+                return
+
+            progress = i / steps
+            bri = max(0, round(start_bri * (1 - progress)))
+            apply_color(honey["hue"], honey["sat"], bri, honey["kelvin"])
+
+            if bri == 0:
+                break
+
+            time.sleep(interval)
+
+        # Final: power off
+        print("[schedule] 10:00 PM — fade complete, powering off")
+        apply_power(False)
+        state.toggle_power()
+
+    _fade_thread = threading.Thread(target=_fade, daemon=True)
+    _fade_thread.start()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(nighttime_reading, "cron", hour=21, minute=25, id="nighttime_reading")
+scheduler.add_job(nighttime_fade, "cron", hour=21, minute=50, id="nighttime_fade")
 
 # ---------------------------------------------------------------------------
 # Endpoints

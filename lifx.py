@@ -24,7 +24,7 @@ import struct
 import sys
 import time
 
-LIFX_IP   = "192.168.68.72"
+LIFX_IP   = "192.168.68.56"
 LIFX_PORT = 56700
 SOURCE    = 0x12345678
 
@@ -60,12 +60,12 @@ PRESETS = {
         "kelvin": 2500,
         "desc": "deep red-orange 5% — near-dark, low cortisol",
     },
-    "dim": {
-        "hue": 0,
-        "sat": 0,
-        "bri": int(65535 * 0.15),
-        "kelvin": 2700,
-        "desc": "warm dim 15% — very low ambient",
+    "honey": {
+        "hue": int(45 / 360 * 65535),
+        "sat": int(65535 * 0.70),
+        "bri": int(65535 * 0.25),
+        "kelvin": 2200,
+        "desc": "amber-gold 25% — warm reggae evening",
     },
     "cinema": {
         "hue": int(30 / 360 * 65535),

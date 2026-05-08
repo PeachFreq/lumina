@@ -15,7 +15,7 @@ const PRESETS = [
   { id: "morning",  name: "MORNING",  desc: "warm white · 3000K",     accent: "#F5C882", bri: 70 },
   { id: "reading",  name: "READING",  desc: "neutral white · 4500K",  accent: "#B8CCE4", bri: 90 },
   { id: "relax",    name: "RELAX",    desc: "warm amber · 2500K",     accent: "#E8A64C", bri: 35 },
-  { id: "dim",      name: "DIM",      desc: "low ambient · 2700K",    accent: "#C49A52", bri: 15 },
+  { id: "honey",    name: "HONEY",    desc: "amber-gold · 2200K",     accent: "#D4A034", bri: 25 },
   { id: "sleep",    name: "SLEEP",    desc: "red-orange · near dark",  accent: "#D4391C", bri: 5  },
   { id: "cinema",   name: "CINEMA",   desc: "ember glow · 2700K",     accent: "#C47A12", bri: 2  },
   { id: "velvet",   name: "VELVET",   desc: "fuchsia · mood",         accent: "#E5006A", bri: 32 },
