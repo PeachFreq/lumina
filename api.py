@@ -272,10 +272,9 @@ def do_preset(name: str, source: str = "app") -> dict:
         raise HTTPException(status_code=404, detail=f"Unknown preset: {name}")
     cmd = presets[name]["command"]
     apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
-    if name in DRIFT_PALETTES and source != "engine":
-        drift.start(name, DRIFT_PALETTES[name])
-    else:
-        drift.stop()
+    # Drift disabled 2026-08-30 (Cody: motion felt seasick, not relaxing).
+    # Engine kept dormant pending a much subtler design.
+    drift.stop()
     if not state.power:
         apply_power(True)
     state.set_preset(name)

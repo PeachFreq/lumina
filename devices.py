@@ -66,7 +66,13 @@ def kelvin_to_rgb(kelvin: int) -> tuple:
         g = 288.1221695283 * ((t - 60) ** -0.0755148492)
         b = 255.0
     clamp = lambda v: int(max(0, min(255, v)))
-    return clamp(r), clamp(g), clamp(b)
+    r, g, b = clamp(r), clamp(g), clamp(b)
+    if kelvin <= 3000:
+        # bias toward LIFX's warm rendering: Govee diffusers wash out warmth,
+        # so pull blue hard and green slightly to keep honest amber
+        g = int(g * 0.88)
+        b = int(b * 0.45)
+    return r, g, b
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +272,13 @@ class GoveeDevice(Device):
                 {"msg": {"cmd": "brightness",
                          "data": {"value": max(1, min(100, bri))}}}]
         if sat > 0:
-            rgb_int = hsbk_to_rgb_int(hue, sat, bri)
+            # Govee diffusers wash saturated warm hues toward white — bias
+            # toward the LIFX reference: deepen saturation, nudge hue orange
+            eff_hue, eff_sat = hue, sat
+            if hue < 70 or hue > 340:  # warm territory
+                eff_hue = max(0, hue - 6)
+                eff_sat = min(100, int(sat * 1.30))
+            rgb_int = hsbk_to_rgb_int(eff_hue, eff_sat, bri)
             r, g, b = (rgb_int >> 16) & 0xFF, (rgb_int >> 8) & 0xFF, rgb_int & 0xFF
         else:
             # white presets: render kelvin as warm RGB ourselves — the H6022's

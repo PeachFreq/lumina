@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import "./styles/globals.css";
 import "./styles/presets.css";
 import Masthead from "./components/Masthead";
-import ContourHero from "./components/ContourHero";
 import UpdateRuleStrip from "./components/UpdateRuleStrip";
 import MinimaGrid, { type MinimaData } from "./components/MinimaGrid";
 import DeviceRack from "./components/DeviceRack";
@@ -16,12 +15,9 @@ import {
   setDevicePower,
   soloDevice,
   MOCK_DEVICES,
-  DEFAULT_ANCHORS,
-  DEFAULT_WAKE,
   type BulbState,
   type DeviceInfo,
   type EngineState,
-  type Anchor,
 } from "./api";
 
 /* ─── Minima definitions (named wells in parameter space, mirrored for instant UI) ─── */
@@ -86,21 +82,6 @@ export default function App() {
     setIsOn(true);
     activatePreset(id).catch(console.error);
   }, []);
-
-  const handleNodeTap = useCallback(
-    (anchor: Anchor, _index: number) => {
-      if (anchor.preset) {
-        handlePreset(anchor.preset);
-      } else if (anchor.bri != null && anchor.kelvin != null) {
-        setIsCustom(true);
-        setIsOn(true);
-        const vals = { hue: 30, sat: 0, bri: anchor.bri, kelvin: anchor.kelvin };
-        setCustomValues(vals);
-        setCustom(vals).catch(console.error);
-      }
-    },
-    [handlePreset]
-  );
 
   const handleOff = useCallback(() => {
     setIsOn((prev) => !prev);
@@ -188,12 +169,6 @@ export default function App() {
           }}
         >
           <Masthead isOn={isOn} modeLabel={statusLabel} bri={statusBri} kelvin={statusKelvin} />
-
-          <ContourHero
-            anchors={DEFAULT_ANCHORS}
-            onNodeTap={handleNodeTap}
-            wakeCurrent={engine?.wake?.wake_current ?? DEFAULT_WAKE.wake_current}
-          />
 
           <UpdateRuleStrip engine={engine} />
 
