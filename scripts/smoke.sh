@@ -64,8 +64,8 @@ B=$(get /api/presets)
 check "saved minimum appears" "$B" "any(p['id']=='smoke-test' for p in d['presets'])"
 
 B=$(get /api/schedule)
-check "GET /api/schedule" "$B" "d['trajectory'][0]['time']=='20:30' and d['wake']['wake_target']=='05:50'"
-check "5 default anchors" "$B" "len(d['trajectory'])==5 and d['trajectory'][-1]['name']=='minimum'"
+check "GET /api/schedule" "$B" "d['trajectory'][0]['time']=='21:00' and d['wake']['wake_target']=='05:50'"
+check "4 default anchors" "$B" "len(d['trajectory'])==4 and d['trajectory'][-1]['name']=='minimum'"
 
 B=$(put /api/schedule '{"armed":false}')
 check "PUT /api/schedule disarm" "$B" "d['ok'] and d['engine']['armed']==False"

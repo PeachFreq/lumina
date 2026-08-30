@@ -180,7 +180,7 @@ export default function App() {
           style={{
             display: "flex",
             flexDirection: "column",
-            padding: "0 20px",
+            padding: "max(env(safe-area-inset-top), 24px) 20px 0",
             maxWidth: 430,
             margin: "0 auto",
             width: "100%",

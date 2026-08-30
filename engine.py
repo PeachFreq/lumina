@@ -22,13 +22,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 HERE = Path(__file__).parent
 ENGINE_STATE_FILE = HERE / ".lumina_engine.json"
 
-# Default evening descent — spec §4.1
+# Default evening descent — spec §4.1 (rev: Cody's real window is 21:30–21:50
+# in bed, lights out ~22:00; descent begins at 21:00)
 DEFAULT_ANCHORS = [
-    {"time": "20:30", "name": "sundown",
+    {"time": "21:00", "name": "sundown",
      "state": {"hue": 0, "sat": 0, "bri": 35, "kelvin": 2500}, "curve": "linear"},
-    {"time": "21:00", "name": "settle",
-     "state": {"hue": 0, "sat": 0, "bri": 30, "kelvin": 2400}, "curve": "linear"},
-    {"time": "21:25", "name": "honey",
+    {"time": "21:30", "name": "honey",
      "state": {"hue": 45, "sat": 70, "bri": 25, "kelvin": 2200}, "curve": "linear"},
     {"time": "21:50", "name": "fade",
      "state": {"hue": 45, "sat": 70, "bri": 25, "kelvin": 2200}, "curve": "exp"},

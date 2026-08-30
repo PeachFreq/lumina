@@ -171,9 +171,8 @@ export const MOCK_DEVICES: DeviceInfo[] = [
 ];
 
 export const DEFAULT_ANCHORS: Anchor[] = [
-  { time: "20:30", anchor: "sundown", preset: "relax", bri: 35, kelvin: 2500 },
-  { time: "21:00", anchor: "settle", preset: null, bri: 30, kelvin: 2400 },
-  { time: "21:25", anchor: "honey", preset: "honey", bri: 25, kelvin: 2200 },
+  { time: "21:00", anchor: "sundown", preset: "relax", bri: 35, kelvin: 2500 },
+  { time: "21:30", anchor: "honey", preset: "honey", bri: 25, kelvin: 2200 },
   { time: "21:50", anchor: "fade", preset: null, bri: 10, kelvin: 2000 },
   { time: "22:00", anchor: "minimum", preset: "sleep", bri: 0, kelvin: 2000 },
 ];

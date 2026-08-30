@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Anchor } from "../api";
-import GhostVisitor from "./GhostVisitor";
+// GhostVisitor hidden pending redesign — see note at bottom of render
 
 /* ─── ContourHero — SVG contour topography of tonight's descent (spec §1.4) ─── */
 
@@ -139,9 +139,9 @@ export default function ContourHero({ anchors, onNodeTap, wakeCurrent }: Props) 
     <div
       style={{
         position: "relative",
-        height: "38vh",
-        minHeight: 250,
-        maxHeight: 360,
+        height: "26vh",
+        minHeight: 200,
+        maxHeight: 250,
         margin: "0 -6px",
         animation: "fadeIn 0.7s ease both 0.05s",
       }}
@@ -210,8 +210,11 @@ export default function ContourHero({ anchors, onNodeTap, wakeCurrent }: Props) 
           {nodes.map((n) => (
             <g
               key={n.index}
-              onClick={() => handleTap(n.index)}
-              style={{ cursor: "pointer" }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                handleTap(n.index);
+              }}
+              style={{ cursor: "pointer", touchAction: "manipulation" }}
               pointerEvents="all"
             >
               <circle cx={n.x} cy={n.y} r="14" fill="transparent" />
@@ -314,8 +317,8 @@ export default function ContourHero({ anchors, onNodeTap, wakeCurrent }: Props) 
         </g>
       </svg>
 
-      {/* Dario walks the contour lines (spec §2 zone 7) */}
-      <GhostVisitor />
+      {/* Dario hidden pending redesign (Cody 2026-08-30) — component kept.
+          <GhostVisitor /> */}
     </div>
   );
 }

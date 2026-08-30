@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import colorsys
 import json
+import math
 import os
 import socket
 import subprocess
@@ -48,6 +49,24 @@ def hsbk_to_rgb_int(hue: int, sat: int, bri: int) -> int:
     """HSB (deg, %, %) -> Govee rgb int. Full-brightness RGB; bri sent separately."""
     r, g, b = colorsys.hsv_to_rgb((hue % 360) / 360.0, sat / 100.0, 1.0)
     return (int(r * 255) << 16) | (int(g * 255) << 8) | int(b * 255)
+
+
+def kelvin_to_rgb(kelvin: int) -> tuple:
+    """Color temperature -> RGB (Tanner Helland approximation).
+    Used because some Govee LAN firmwares render colorTemInKelvin as
+    plain white instead of warm; driving the RGB engine directly gives
+    us honest warmth on every lamp."""
+    t = max(1000, min(12000, kelvin)) / 100.0
+    if t <= 66:
+        r = 255.0
+        g = 99.4708025861 * math.log(t) - 161.1195681661
+        b = 0.0 if t <= 19 else 138.5177312231 * math.log(t - 10) - 305.0447927307
+    else:
+        r = 329.698727446 * ((t - 60) ** -0.1332047592)
+        g = 288.1221695283 * ((t - 60) ** -0.0755148492)
+        b = 255.0
+    clamp = lambda v: int(max(0, min(255, v)))
+    return clamp(r), clamp(g), clamp(b)
 
 
 # ---------------------------------------------------------------------------
@@ -248,15 +267,14 @@ class GoveeDevice(Device):
                          "data": {"value": max(1, min(100, bri))}}}]
         if sat > 0:
             rgb_int = hsbk_to_rgb_int(hue, sat, bri)
-            msgs.append({"msg": {"cmd": "colorwc", "data": {
-                "color": {"r": (rgb_int >> 16) & 0xFF,
-                          "g": (rgb_int >> 8) & 0xFF,
-                          "b": rgb_int & 0xFF},
-                "colorTemInKelvin": 0}}})
+            r, g, b = (rgb_int >> 16) & 0xFF, (rgb_int >> 8) & 0xFF, rgb_int & 0xFF
         else:
-            msgs.append({"msg": {"cmd": "colorwc", "data": {
-                "color": {"r": 0, "g": 0, "b": 0},
-                "colorTemInKelvin": max(2000, min(9000, kelvin))}}})
+            # white presets: render kelvin as warm RGB ourselves — the H6022's
+            # LAN colorTemInKelvin path shows stark white regardless of kelvin
+            r, g, b = kelvin_to_rgb(kelvin)
+        msgs.append({"msg": {"cmd": "colorwc", "data": {
+            "color": {"r": r, "g": g, "b": b},
+            "colorTemInKelvin": 0}}})
         self._enqueue(msgs)
 
     def power(self, on: bool) -> None:

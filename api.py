@@ -9,6 +9,7 @@ Run: .venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 5174
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -175,6 +176,7 @@ def apply_power(on: bool):
 
 def _engine_apply(hue, sat, bri, kelvin):
     """Engine tick actuation — updates lights AND app state (mode stays preset-ish)."""
+    drift.stop()
     apply_color(hue, sat, bri, kelvin)
     state.power = True
     state.mode = "custom"
@@ -194,12 +196,86 @@ engine = Engine(apply_cb=_engine_apply, power_cb=_engine_power,
                 journal_cb=lambda e: journal("engine", e))
 
 
+# ---------------------------------------------------------------------------
+# Drift — slow ambient color motion for dynamic presets (our own "scenes").
+# Govee LAN can't trigger app scenes (cloud/BLE only), so we render our own:
+# a background thread eases the Govee lamps through a curated palette while
+# the LIFX key light holds the preset's static anchor color.
+# ---------------------------------------------------------------------------
+
+class Drift:
+    def __init__(self):
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self.active: Optional[str] = None  # preset name driving the drift
+
+    def start(self, name: str, palette: list, leg_seconds: float = 40.0):
+        self.stop()
+        self._stop.clear()
+        self.active = name
+
+        def run():
+            i = 0
+            while not self._stop.is_set():
+                a = palette[i % len(palette)]
+                b = palette[(i + 1) % len(palette)]
+                steps = max(8, int(leg_seconds))  # ~1 step/sec, imperceptible
+                for s in range(steps):
+                    if self._stop.is_set():
+                        return
+                    f = (1 - math.cos(math.pi * s / steps)) / 2  # cosine ease
+                    theta = {k: round(a[k] + (b[k] - a[k]) * f)
+                             for k in ("hue", "sat", "bri", "kelvin")}
+                    for d in registry.devices.values():
+                        if d.kind == "govee" and d.enabled and d.online:
+                            d.apply(**theta)
+                    self._stop.wait(leg_seconds / steps)
+                i += 1
+
+        self._thread = threading.Thread(target=run, daemon=True, name="drift")
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self.active = None
+
+
+drift = Drift()
+
+# Curated palettes — tasteful motion, no disco. Hue/sat/bri/kelvin keyframes.
+DRIFT_PALETTES = {
+    # sunset glow: amber -> coral -> dusty rose -> ember -> back
+    "relax": [
+        {"hue": 35, "sat": 65, "bri": 35, "kelvin": 2500},
+        {"hue": 18, "sat": 72, "bri": 32, "kelvin": 2300},
+        {"hue": 350, "sat": 45, "bri": 30, "kelvin": 2400},
+        {"hue": 25, "sat": 80, "bri": 33, "kelvin": 2200},
+    ],
+    # honey: slow pour between golds
+    "honey": [
+        {"hue": 45, "sat": 70, "bri": 25, "kelvin": 2200},
+        {"hue": 38, "sat": 82, "bri": 22, "kelvin": 2100},
+        {"hue": 52, "sat": 60, "bri": 26, "kelvin": 2300},
+    ],
+    # velvet: fuchsia breathing toward violet
+    "velvet": [
+        {"hue": 330, "sat": 100, "bri": 32, "kelvin": 3500},
+        {"hue": 305, "sat": 90, "bri": 28, "kelvin": 3500},
+        {"hue": 345, "sat": 95, "bri": 34, "kelvin": 3500},
+    ],
+}
+
+
 def do_preset(name: str, source: str = "app") -> dict:
     presets = all_presets()
     if name not in presets:
         raise HTTPException(status_code=404, detail=f"Unknown preset: {name}")
     cmd = presets[name]["command"]
     apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
+    if name in DRIFT_PALETTES and source != "engine":
+        drift.start(name, DRIFT_PALETTES[name])
+    else:
+        drift.stop()
     if not state.power:
         apply_power(True)
     state.set_preset(name)
@@ -210,6 +286,7 @@ def do_preset(name: str, source: str = "app") -> dict:
 
 
 def do_custom(hue: int, sat: int, bri: int, kelvin: int, source: str = "app") -> dict:
+    drift.stop()
     apply_color(hue, sat, bri, kelvin)
     if not state.power:
         apply_power(True)
@@ -222,6 +299,7 @@ def do_custom(hue: int, sat: int, bri: int, kelvin: int, source: str = "app") ->
 
 
 def do_off_toggle(source: str = "app") -> dict:
+    drift.stop()
     state.toggle_power()
     apply_power(state.power)
     if state.power:
