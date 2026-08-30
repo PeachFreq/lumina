@@ -1,29 +1,27 @@
-/* ─── LUMINA — Preset Grid & Tile Styles ─── */
+/* ─── LUMINA v2 — Minima Grid (Blueprint Ember tiles) ─── */
 
-.preset-grid {
+.minima-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 8px;
   animation: fadeIn 0.6s ease both 0.1s;
 }
 
-/* ─── Tile ─── */
-
-.preset-tile {
+.minima-tile {
   position: relative;
+  min-width: 0;
+  overflow: hidden;
   background: var(--surface);
-  border-radius: 14px;
-  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 14px;
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 80px;
-  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  min-height: 74px;
   transition:
     transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
     background 0.6s ease,
@@ -31,119 +29,60 @@
     box-shadow 0.6s ease;
 }
 
-.preset-tile:active {
+.minima-tile:active {
   transform: scale(0.96);
 }
 
-.preset-tile--featured {
+.minima-tile--featured {
   grid-column: 1 / -1;
-  min-height: 72px;
+  min-height: 64px;
 }
 
-.preset-tile--active {
-  background: linear-gradient(
-    135deg,
-    rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.12) 0%,
-    var(--surface) 100%
-  );
-  border-color: rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.35);
-  box-shadow:
-    0 0 24px rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.15),
-    0 0 48px rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.06),
-    inset 0 1px 0 rgba(var(--tile-accent-r), var(--tile-accent-g), var(--tile-accent-b), 0.1);
+.minima-tile--active {
+  border-color: var(--ember);
+  box-shadow: 0 0 18px rgba(255, 77, 28, 0.12);
+  background: var(--bg-raise);
 }
 
-/* ─── Tile internals ─── */
-
-.tile-header {
+.minima-tile__body {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
-.tile-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  transition: all 0.4s ease;
-}
-
-.tile-dot--active {
-  box-shadow: 0 0 8px currentColor;
-}
-
-.tile-name {
+.minima-tile__name {
   font-family: "Syne", sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
   transition: color 0.4s ease;
 }
 
-.tile-name--featured {
-  font-size: 15px;
+.minima-tile--active .minima-tile__name {
+  color: var(--bone);
 }
 
-.tile-name--active {
-  color: var(--text);
-}
-
-.tile-desc {
+.minima-tile__desc {
   font-family: "DM Mono", monospace;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.03em;
   color: var(--text-dim);
-  padding-left: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.minima-tile__coord {
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--contour);
   transition: color 0.4s ease;
 }
 
-/* ─── Off Button ─── */
-
-.off-btn {
-  width: 100%;
-  padding: 14px 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text-muted);
-  font-family: "Syne", sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.off-btn--off {
-  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
-  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3);
-  color: var(--accent);
-}
-
-/* ─── Custom Trigger ─── */
-
-.custom-trigger {
-  width: 100%;
-  padding: 12px 0;
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-family: "DM Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.custom-trigger__arrow {
-  font-size: 16px;
-  line-height: 1;
+.minima-tile--active .minima-tile__coord {
+  color: var(--blueprint);
 }

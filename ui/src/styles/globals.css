@@ -1,23 +1,27 @@
-/* ─── LUMINA — Global Styles ─── */
+/* ─── LUMINA v2 — "Blueprint Ember" Global Styles ─── */
 
 @import url("https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap");
 
 :root {
-  --bg: #0e0c14;
-  --surface: #161420;
-  --surface-hover: #1c1828;
-  --surface-active: #221e30;
-  --text: #e8e4f0;
-  --text-muted: #7b7490;
-  --text-dim: #4a4460;
-  --border: #2a2636;
-  --border-active: #3a3450;
+  /* Blueprint Ember palette (spec §1.1) */
+  --bg: #0b0d12;
+  --bg-raise: #11141c;
+  --surface: #151925;
+  --line: #232a3a;
+  --contour: #2e3a54;
+  --blueprint: #5b7bb4;
+  --ember: #ff4d1c;
+  --ember-deep: #c43214;
+  --bone: #e8e0d0;
+  --text-muted: #8a87a0;
+  --text-dim: #4a4d63;
 
-  /* Preset accents — set dynamically via JS on :root */
-  --accent: #7b7490;
-  --accent-r: 123;
-  --accent-g: 116;
-  --accent-b: 144;
+  /* Legacy aliases */
+  --text: var(--bone);
+  --border: var(--line);
+  --border-active: var(--contour);
+  --surface-hover: #191e2c;
+  --surface-active: #1c2231;
 }
 
 *,
@@ -37,7 +41,7 @@ body,
   width: 100%;
   overflow: hidden;
   background: var(--bg);
-  color: var(--text);
+  color: var(--bone);
   font-family: "Syne", sans-serif;
 }
 
@@ -49,11 +53,17 @@ body {
   -webkit-user-select: none;
 }
 
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 ::-webkit-scrollbar {
   display: none;
 }
 
-/* ─── Animations ─── */
+/* ─── Animations (v1 timings carried over) ─── */
 
 @keyframes fadeIn {
   from {
@@ -88,11 +98,33 @@ body {
   }
 }
 
+@keyframes emberPulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(100%);
   }
   to {
     transform: translateY(0);
+  }
+}
+
+@keyframes confirmFlash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
   }
 }

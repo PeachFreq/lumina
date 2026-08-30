@@ -1,66 +1,54 @@
 import { useState, useEffect, useCallback } from "react";
 import "./styles/globals.css";
 import "./styles/presets.css";
-import StateIndicator from "./components/StateIndicator";
-import PresetGrid from "./components/PresetGrid";
+import Masthead from "./components/Masthead";
+import ContourHero from "./components/ContourHero";
+import UpdateRuleStrip from "./components/UpdateRuleStrip";
+import MinimaGrid, { type MinimaData } from "./components/MinimaGrid";
+import DeviceRack from "./components/DeviceRack";
 import CustomPanel from "./components/CustomPanel";
-import { activatePreset, togglePower, setCustom, getState, type BulbState } from "./api";
-import { type PresetData } from "./components/PresetTile";
-import GhostVisitor from "./components/GhostVisitor";
+import ScheduleSheet from "./components/ScheduleSheet";
+import {
+  activatePreset,
+  togglePower,
+  setCustom,
+  getState,
+  setDevicePower,
+  soloDevice,
+  MOCK_DEVICES,
+  DEFAULT_ANCHORS,
+  DEFAULT_WAKE,
+  type BulbState,
+  type DeviceInfo,
+  type EngineState,
+  type Anchor,
+} from "./api";
 
-/* ─── Preset definitions (mirrored from backend for instant UI) ─── */
+/* ─── Minima definitions (named wells in parameter space, mirrored for instant UI) ─── */
 
-const PRESETS: PresetData[] = [
-  { id: "morning", name: "MORNING", desc: "warm white · 3000K", accent: "#F5C882", bri: 70 },
-  { id: "reading", name: "READING", desc: "neutral white · 4500K", accent: "#B8CCE4", bri: 90 },
-  { id: "relax", name: "RELAX", desc: "warm amber · 2500K", accent: "#E8A64C", bri: 35 },
-  { id: "honey", name: "HONEY", desc: "amber-gold · 2200K", accent: "#D4A034", bri: 25 },
-  { id: "sleep", name: "SLEEP", desc: "red-orange · near dark", accent: "#D4391C", bri: 5 },
-  { id: "cinema", name: "CINEMA", desc: "ember glow · 2700K", accent: "#C47A12", bri: 2 },
-  { id: "velvet", name: "VELVET", desc: "fuchsia · mood", accent: "#E5006A", bri: 32 },
+const MINIMA: MinimaData[] = [
+  { id: "morning", name: "MORNING", desc: "warm white", accent: "#F5C882", hue: 40, sat: 0, bri: 70, kelvin: 3000 },
+  { id: "reading", name: "READING", desc: "neutral white", accent: "#B8CCE4", hue: 220, sat: 0, bri: 90, kelvin: 4500 },
+  { id: "relax", name: "RELAX", desc: "warm amber", accent: "#E8A64C", hue: 35, sat: 60, bri: 35, kelvin: 2500 },
+  { id: "honey", name: "HONEY", desc: "amber-gold · reading in bed", accent: "#D4A034", hue: 42, sat: 80, bri: 25, kelvin: 2200 },
+  { id: "sleep", name: "SLEEP", desc: "red-orange · near dark", accent: "#C43214", hue: 15, sat: 100, bri: 5, kelvin: 2500 },
+  { id: "cinema", name: "CINEMA", desc: "ember glow", accent: "#C47A12", hue: 30, sat: 70, bri: 2, kelvin: 2700 },
+  { id: "velvet", name: "VELVET", desc: "fuchsia · mood", accent: "#E5006A", hue: 330, sat: 100, bri: 32, kelvin: 3500, featured: true },
 ];
-
-/** Parse "#RRGGBB" → {r, g, b} */
-function hexToRgb(hex: string) {
-  return {
-    r: parseInt(hex.slice(1, 3), 16),
-    g: parseInt(hex.slice(3, 5), 16),
-    b: parseInt(hex.slice(5, 7), 16),
-  };
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100;
-  l /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * color).toString(16).padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
 
 export default function App() {
   const [activePresetId, setActivePresetId] = useState("relax");
   const [isOn, setIsOn] = useState(true);
   const [isCustom, setIsCustom] = useState(false);
   const [showCustomPanel, setShowCustomPanel] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
   const [customValues, setCustomValues] = useState({ hue: 280, sat: 80, bri: 50, kelvin: 3500 });
+  const [engine, setEngine] = useState<EngineState | null>(null);
+  const [devices, setDevices] = useState<DeviceInfo[]>(MOCK_DEVICES);
 
-  /* ─── Derive accent color ─── */
+  /* ─── Sync from backend (mock defaults stand when unreachable) ─── */
 
-  const activePreset = PRESETS.find((p) => p.id === activePresetId);
-  const accent = !isOn
-    ? "#4A4460"
-    : isCustom
-      ? hslToHex(customValues.hue, customValues.sat, Math.max(30, customValues.bri * 0.6))
-      : activePreset?.accent || "#4A4460";
-  const { r: ar, g: ag, b: ab } = hexToRgb(accent);
-
-  /* ─── Sync from backend on mount ─── */
-
-  useEffect(() => {
+  const refresh = useCallback(() => {
     getState()
       .then((s: BulbState) => {
         setIsOn(s.power);
@@ -69,17 +57,28 @@ export default function App() {
           setIsCustom(true);
           setCustomValues(s.custom);
         }
+        if (s.engine) setEngine(s.engine);
+        if (s.devices && s.devices.length) setDevices(s.devices);
       })
       .catch(() => {
-        /* Backend unreachable — use defaults */
+        /* Backend unreachable — mock/default state stands */
       });
   }, []);
 
-  /* ─── Status label ─── */
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
+  /* ─── Derived status ─── */
+
+  const activeMinimum = MINIMA.find((m) => m.id === activePresetId);
   const statusLabel = !isOn ? "OFF" : isCustom ? "CUSTOM" : activePresetId.toUpperCase();
+  const statusBri = isCustom ? customValues.bri : activeMinimum?.bri ?? 0;
+  const statusKelvin = isCustom ? customValues.kelvin : activeMinimum?.kelvin ?? 2500;
 
-  /* ─── Handlers (optimistic updates, fire-and-forget API calls) ─── */
+  /* ─── Handlers (optimistic, fire-and-forget) ─── */
 
   const handlePreset = useCallback((id: string) => {
     setActivePresetId(id);
@@ -87,6 +86,21 @@ export default function App() {
     setIsOn(true);
     activatePreset(id).catch(console.error);
   }, []);
+
+  const handleNodeTap = useCallback(
+    (anchor: Anchor, _index: number) => {
+      if (anchor.preset) {
+        handlePreset(anchor.preset);
+      } else if (anchor.bri != null && anchor.kelvin != null) {
+        setIsCustom(true);
+        setIsOn(true);
+        const vals = { hue: 30, sat: 0, bri: anchor.bri, kelvin: anchor.kelvin };
+        setCustomValues(vals);
+        setCustom(vals).catch(console.error);
+      }
+    },
+    [handlePreset]
+  );
 
   const handleOff = useCallback(() => {
     setIsOn((prev) => !prev);
@@ -100,6 +114,18 @@ export default function App() {
     setCustom(customValues).catch(console.error);
   }, [customValues]);
 
+  const handleDevicePower = useCallback((id: string, on: boolean) => {
+    setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, enabled: on } : d)));
+    setDevicePower(id, on).catch(console.error);
+  }, []);
+
+  const handleSolo = useCallback((id: string) => {
+    setDevices((prev) =>
+      prev.map((d) => ({ ...d, solo: d.id === id }))
+    );
+    soloDevice(id).catch(console.error);
+  }, []);
+
   return (
     <div
       style={{
@@ -111,7 +137,7 @@ export default function App() {
         flexDirection: "column",
       }}
     >
-      {/* ─── Noise texture overlay ─── */}
+      {/* ─── Grain overlay (printed-plate texture, kept from v1) ─── */}
       <svg
         style={{
           position: "fixed",
@@ -120,7 +146,7 @@ export default function App() {
           height: "100%",
           pointerEvents: "none",
           zIndex: 100,
-          opacity: 0.035,
+          opacity: 0.04,
         }}
       >
         <filter id="lumina-noise">
@@ -129,129 +155,148 @@ export default function App() {
         <rect width="100%" height="100%" filter="url(#lumina-noise)" />
       </svg>
 
-      {/* ─── Ambient color wash (primary) ─── */}
+      {/* ─── Page border frame — 1px --line inset, like a printed plate ─── */}
       <div
         style={{
           position: "fixed",
-          top: "25%",
-          left: "50%",
-          width: 400,
-          height: 400,
-          background: `radial-gradient(circle, rgba(${ar},${ag},${ab},${isOn ? 0.1 : 0}) 0%, transparent 70%)`,
-          transform: "translate(-50%, -50%)",
-          filter: "blur(80px)",
-          transition: "background 1.2s ease",
+          inset: 6,
+          border: "1px solid var(--line)",
           pointerEvents: "none",
-          zIndex: 0,
-          animation: isOn ? "breathe 6s ease-in-out infinite" : "none",
+          zIndex: 99,
         }}
       />
 
-      {/* ─── Ambient color wash (secondary) ─── */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: "-10%",
-          left: "50%",
-          width: 500,
-          height: 300,
-          background: `radial-gradient(ellipse, rgba(${ar},${ag},${ab},${isOn ? 0.06 : 0}) 0%, transparent 70%)`,
-          transform: "translateX(-50%)",
-          filter: "blur(60px)",
-          transition: "background 1.2s ease",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-
-      {/* ─── Main content column ─── */}
+      {/* ─── Scrolling content column ─── */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
           flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          padding: "0 20px",
-          maxWidth: 430,
-          margin: "0 auto",
-          width: "100%",
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        <StateIndicator isOn={isOn} accent={accent} label={statusLabel} />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            padding: "0 20px",
+            maxWidth: 430,
+            margin: "0 auto",
+            width: "100%",
+            minHeight: "100%",
+          }}
+        >
+          <Masthead isOn={isOn} modeLabel={statusLabel} bri={statusBri} kelvin={statusKelvin} />
 
-        <PresetGrid
-          presets={PRESETS}
-          activeId={activePresetId}
-          isOn={isOn}
-          isCustom={isCustom}
-          onSelect={handlePreset}
-        />
+          <ContourHero
+            anchors={DEFAULT_ANCHORS}
+            onNodeTap={handleNodeTap}
+            wakeCurrent={engine?.wake?.wake_current ?? DEFAULT_WAKE.wake_current}
+          />
 
-        {/* Flexible spacer */}
-        <div style={{ flex: 1, minHeight: 16, position: "relative" }}>
-          <GhostVisitor />
-        </div>
+          <UpdateRuleStrip engine={engine} />
 
-        {/* Off button */}
-        <div style={{ animation: "fadeIn 0.6s ease both 0.2s", paddingBottom: 10 }}>
-          <button
-            onClick={handleOff}
+          <MinimaGrid
+            minima={MINIMA}
+            activeId={activePresetId}
+            isOn={isOn}
+            isCustom={isCustom}
+            onSelect={handlePreset}
+          />
+
+          <DeviceRack devices={devices} onTogglePower={handleDevicePower} onSolo={handleSolo} />
+
+          {/* ─── Footer controls ─── */}
+
+          <div style={{ animation: "fadeIn 0.6s ease both 0.2s", paddingBottom: 8 }}>
+            <button
+              onClick={handleOff}
+              style={{
+                width: "100%",
+                padding: "14px 0",
+                background: !isOn ? "rgba(255,77,28,0.08)" : "transparent",
+                border: `1px solid ${!isOn ? "var(--ember)" : "var(--line)"}`,
+                borderRadius: 6,
+                color: !isOn ? "var(--ember)" : "var(--text-muted)",
+                fontFamily: "'Syne', sans-serif",
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: "0.18em",
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
+              {isOn ? "OFF" : "TAP TO WAKE"}
+            </button>
+          </div>
+
+          <div
             style={{
-              width: "100%",
-              padding: "14px 0",
-              background: !isOn ? `rgba(${ar},${ag},${ab},0.1)` : "transparent",
-              border: `1px solid ${!isOn ? `rgba(${ar},${ag},${ab},0.3)` : "var(--border)"}`,
-              borderRadius: 12,
-              color: !isOn ? accent : "var(--text-muted)",
-              fontFamily: "'Syne', sans-serif",
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: "0.18em",
-              cursor: "pointer",
-              transition: "all 0.3s ease",
-              WebkitTapHighlightColor: "transparent",
-            }}
-          >
-            {isOn ? "OFF" : "TAP TO WAKE"}
-          </button>
-        </div>
-
-        {/* Custom trigger */}
-        <div style={{ animation: "fadeIn 0.6s ease both 0.3s", paddingBottom: 36 }}>
-          <button
-            onClick={() => setShowCustomPanel(true)}
-            style={{
-              width: "100%",
-              padding: "12px 0",
-              background: "transparent",
-              border: "none",
-              color: "var(--text-dim)",
-              fontFamily: "'DM Mono', monospace",
-              fontSize: 11,
-              letterSpacing: "0.08em",
-              cursor: "pointer",
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
               gap: 8,
-              WebkitTapHighlightColor: "transparent",
+              animation: "fadeIn 0.6s ease both 0.3s",
+              paddingBottom: 34,
             }}
           >
-            <span style={{ fontSize: 16, lineHeight: 1 }}>↑</span>
-            CUSTOM
-          </button>
+            <button
+              onClick={() => setShowCustomPanel(true)}
+              style={{
+                flex: 1,
+                padding: "12px 0",
+                background: "transparent",
+                border: "none",
+                color: "var(--text-dim)",
+                fontFamily: "'DM Mono', monospace",
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>↑</span>
+              CUSTOM
+            </button>
+            <button
+              onClick={() => setShowSchedule(true)}
+              style={{
+                flex: 1,
+                padding: "12px 0",
+                background: "transparent",
+                border: "1px solid var(--line)",
+                borderRadius: 6,
+                color: "var(--blueprint)",
+                fontFamily: "'DM Mono', monospace",
+                fontSize: 11,
+                letterSpacing: "0.14em",
+                cursor: "pointer",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
+              THE DESCENT
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ─── Custom panel bottom sheet ─── */}
+      {/* ─── Bottom sheets ─── */}
       <CustomPanel
         isOpen={showCustomPanel}
         values={customValues}
         onChange={setCustomValues}
         onApply={handleApplyCustom}
         onClose={() => setShowCustomPanel(false)}
+        onLexApplied={() => {
+          setShowCustomPanel(false);
+          refresh();
+        }}
       />
+      <ScheduleSheet isOpen={showSchedule} onClose={() => setShowSchedule(false)} />
     </div>
   );
 }

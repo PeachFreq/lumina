@@ -1,0 +1,41 @@
+{
+  "devices": [
+    {
+      "id": "lifx-bulb",
+      "kind": "lifx",
+      "name": "LIFX BULB",
+      "role": "key"
+    },
+    {
+      "id": "govee-table",
+      "kind": "govee",
+      "name": "GOVEE TABLE",
+      "role": "accent",
+      "sku": "H6022",
+      "device": "20:82:EB:6A:40:86:63:15",
+      "ip": "192.168.68.74"
+    },
+    {
+      "id": "govee-floor",
+      "kind": "govee",
+      "name": "GOVEE FLOOR",
+      "role": "fill",
+      "sku": "H6076",
+      "device": "1E:F8:EF:8D:84:06:4E:83",
+      "ip": "192.168.68.75"
+    }
+  ],
+  "minima": {
+    "smoke-test": {
+      "name": "smoke-test",
+      "description": "saved minimum",
+      "accent": "#5B7BB4",
+      "command": {
+        "hue": 10,
+        "sat": 20,
+        "bri": 30,
+        "kelvin": 2500
+      }
+    }
+  }
+}

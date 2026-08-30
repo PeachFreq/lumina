@@ -1,98 +1,118 @@
 """
-LUMINA — Smart Lighting API
-FastAPI backend wrapping lifx.py for LAN-only control.
-Run: uvicorn api:app --host 0.0.0.0 --port 8766
+LUMINA v2 — "The Descent"
+FastAPI backend: multi-device registry, trajectory engine, lex, Tex bridge,
+and static serving of the built PWA — one process on :5174 (spec §7).
+
+Run: .venv/bin/python -m uvicorn api:app --host 0.0.0.0 --port 5174
 """
 
-import subprocess
+from __future__ import annotations
+
 import json
+import os
 import threading
 import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
-from apscheduler.schedulers.background import BackgroundScheduler
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    scheduler.start()
-    print("Scheduler started — nighttime automation active")
-    yield
-    scheduler.shutdown()
+from devices import DeviceRegistry
+from engine import Engine
 
-app = FastAPI(title="Lumina", version="1.0.0", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+HERE = Path(__file__).parent
+STATE_FILE = HERE / ".lumina_state.json"
+BRIDGE_DIR = HERE / "bridge"
+INBOX_FILE = BRIDGE_DIR / "inbox.jsonl"
+JOURNAL_FILE = BRIDGE_DIR / "journal.jsonl"
+UI_DIST = HERE / "ui" / "dist"
 
 # ---------------------------------------------------------------------------
-# Preset definitions
+# Presets (minima) — v1 built-ins + user minima persisted in lumina.config.json
 # ---------------------------------------------------------------------------
 
 PRESETS = {
     "morning": {
-        "id": "morning",
-        "name": "Morning",
-        "description": "warm white 70%, 3000K — waking up",
-        "accent": "#F5C882",
+        "id": "morning", "name": "Morning",
+        "description": "warm white 70%, 3000K — waking up", "accent": "#F5C882",
         "command": {"hue": 0, "sat": 0, "bri": 70, "kelvin": 3000},
     },
     "reading": {
-        "id": "reading",
-        "name": "Reading",
-        "description": "neutral white 90%, 4500K — focus / book",
-        "accent": "#B8CCE4",
+        "id": "reading", "name": "Reading",
+        "description": "neutral white 90%, 4500K — focus / book", "accent": "#B8CCE4",
         "command": {"hue": 0, "sat": 0, "bri": 90, "kelvin": 4500},
     },
     "relax": {
-        "id": "relax",
-        "name": "Relax",
-        "description": "warm amber 35%, 2500K — evening wind-down",
-        "accent": "#E8A64C",
+        "id": "relax", "name": "Relax",
+        "description": "warm amber 35%, 2500K — evening wind-down", "accent": "#E8A64C",
         "command": {"hue": 0, "sat": 0, "bri": 35, "kelvin": 2500},
     },
     "honey": {
-        "id": "honey",
-        "name": "Honey",
-        "description": "amber-gold 25%, 2200K — warm reggae evening",
-        "accent": "#D4A034",
+        "id": "honey", "name": "Honey",
+        "description": "amber-gold 25%, 2200K — warm reggae evening", "accent": "#D4A034",
         "command": {"hue": 45, "sat": 70, "bri": 25, "kelvin": 2200},
     },
     "sleep": {
-        "id": "sleep",
-        "name": "Sleep",
+        "id": "sleep", "name": "Sleep",
         "description": "deep red-orange 5%, 2500K — near-dark, low cortisol",
         "accent": "#D4391C",
         "command": {"hue": 15, "sat": 100, "bri": 5, "kelvin": 2500},
     },
     "cinema": {
-        "id": "cinema",
-        "name": "Cinema",
-        "description": "warm ember glow 2%, 2700K — movie theater",
-        "accent": "#C47A12",
+        "id": "cinema", "name": "Cinema",
+        "description": "warm ember glow 2%, 2700K — movie theater", "accent": "#C47A12",
         "command": {"hue": 35, "sat": 30, "bri": 2, "kelvin": 2700},
     },
     "velvet": {
-        "id": "velvet",
-        "name": "Velvet",
+        "id": "velvet", "name": "Velvet",
         "description": "deep fuchsia (#E5006A) 32%, 3500K — mood / CitizenM magenta",
         "accent": "#E5006A",
         "command": {"hue": 330, "sat": 100, "bri": 32, "kelvin": 3500},
     },
 }
 
+registry = DeviceRegistry()
+
+
+def all_presets() -> dict:
+    merged = dict(PRESETS)
+    for name, p in (registry.config.get("minima") or {}).items():
+        merged[name] = {
+            "id": name, "name": p.get("name", name.title()),
+            "description": p.get("description", "saved minimum"),
+            "accent": p.get("accent", "#5B7BB4"),
+            "command": p["command"],
+        }
+    return merged
+
+
 # ---------------------------------------------------------------------------
-# In-memory state
+# Journal (bridge/journal.jsonl) — spec §5.2
 # ---------------------------------------------------------------------------
 
-STATE_FILE = Path(__file__).parent / ".lumina_state.json"
+_journal_lock = threading.Lock()
+
+
+def journal(source: str, event: dict) -> None:
+    BRIDGE_DIR.mkdir(exist_ok=True)
+    line = json.dumps({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "source": source,
+        **event,
+    })
+    with _journal_lock:
+        with JOURNAL_FILE.open("a") as f:
+            f.write(line + "\n")
+
+
+# ---------------------------------------------------------------------------
+# App state (v1-compatible, persisted)
+# ---------------------------------------------------------------------------
 
 class BulbState:
     def __init__(self):
@@ -117,12 +137,8 @@ class BulbState:
         STATE_FILE.write_text(json.dumps(self.to_dict(), indent=2))
 
     def to_dict(self):
-        return {
-            "power": self.power,
-            "mode": self.mode,
-            "active_preset": self.active_preset,
-            "custom": self.custom,
-        }
+        return {"power": self.power, "mode": self.mode,
+                "active_preset": self.active_preset, "custom": self.custom}
 
     def set_preset(self, name: str):
         self.power = True
@@ -139,149 +155,271 @@ class BulbState:
 
     def toggle_power(self):
         self.power = not self.power
-        if not self.power:
-            self.mode = "off"
-        else:
-            self.mode = "preset" if self.custom is None else "custom"
+        self.mode = "off" if not self.power else ("preset" if self.custom is None else "custom")
         self._save()
+
 
 state = BulbState()
 
 # ---------------------------------------------------------------------------
-# LIFX controller interface
+# Light actuation
 # ---------------------------------------------------------------------------
-
-LIFX_SCRIPT = Path(__file__).parent / "lifx.py"
-
-def run_lifx(*args: str) -> bool:
-    """Call lifx.py with arguments. Returns True on success."""
-    try:
-        result = subprocess.run(
-            ["python3", str(LIFX_SCRIPT), *args],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            print(f"lifx.py error: {result.stderr}")
-            return False
-        return True
-    except FileNotFoundError:
-        print(f"Warning: {LIFX_SCRIPT} not found — running in demo mode")
-        return True
-    except Exception as e:
-        print(f"lifx.py exception: {e}")
-        return False
 
 def apply_color(hue: int, sat: int, bri: int, kelvin: int):
-    """Send color command to LIFX bulb."""
-    run_lifx("color", str(hue), str(sat), str(bri), str(kelvin))
+    registry.apply_all(hue, sat, bri, kelvin)
+
 
 def apply_power(on: bool):
-    """Toggle LIFX bulb power. lifx.py uses 'off' subcommand; for on, re-apply current state."""
+    registry.power_all(on)
+
+
+def _engine_apply(hue, sat, bri, kelvin):
+    """Engine tick actuation — updates lights AND app state (mode stays preset-ish)."""
+    apply_color(hue, sat, bri, kelvin)
+    state.power = True
+    state.mode = "custom"
+    state.custom = {"hue": hue, "sat": sat, "bri": bri, "kelvin": kelvin}
+    state._save()
+
+
+def _engine_power(on: bool):
+    apply_power(on)
+    state.power = on
     if not on:
-        run_lifx("off")
+        state.mode = "off"
+    state._save()
 
-# ---------------------------------------------------------------------------
-# Nightly automation
-# ---------------------------------------------------------------------------
 
-_fade_thread: Optional[threading.Thread] = None
+engine = Engine(apply_cb=_engine_apply, power_cb=_engine_power,
+                journal_cb=lambda e: journal("engine", e))
 
-def nighttime_reading():
-    """9:25 PM — activate Honey preset for nighttime reading."""
-    print("[schedule] 9:25 PM — activating Honey preset")
-    preset = PRESETS["honey"]
-    cmd = preset["command"]
-    apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
-    if not state.power:
-        apply_power(True)
-    state.set_preset("honey")
 
-def nighttime_fade():
-    """9:50 PM — gently fade from Honey down to off over 10 minutes."""
-    global _fade_thread
-
-    def _fade():
-        honey = PRESETS["honey"]["command"]
-        start_bri = honey["bri"]  # 25
-        steps = 40  # one step every 15 seconds over 10 minutes
-        interval = 600.0 / steps  # 15s
-
-        print(f"[schedule] 9:50 PM — beginning fade to off ({steps} steps over 10 min)")
-
-        for i in range(1, steps + 1):
-            # If user manually changed the light, stop fading
-            if state.mode != "preset" or state.active_preset != "honey":
-                print("[schedule] fade cancelled — user changed the light")
-                return
-
-            progress = i / steps
-            bri = max(0, round(start_bri * (1 - progress)))
-            apply_color(honey["hue"], honey["sat"], bri, honey["kelvin"])
-
-            if bri == 0:
-                break
-
-            time.sleep(interval)
-
-        # Final: power off
-        print("[schedule] 10:00 PM — fade complete, powering off")
-        apply_power(False)
-        state.toggle_power()
-
-    _fade_thread = threading.Thread(target=_fade, daemon=True)
-    _fade_thread.start()
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(nighttime_reading, "cron", hour=21, minute=25, id="nighttime_reading")
-scheduler.add_job(nighttime_fade, "cron", hour=21, minute=50, id="nighttime_fade")
-
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
-@app.get("/presets")
-def get_presets():
-    return {
-        "presets": [
-            {"id": p["id"], "name": p["name"], "description": p["description"], "accent": p["accent"]}
-            for p in PRESETS.values()
-        ]
-    }
-
-@app.get("/state")
-def get_state():
-    return state.to_dict()
-
-@app.post("/preset/{name}")
-def activate_preset(name: str):
-    if name not in PRESETS:
+def do_preset(name: str, source: str = "app") -> dict:
+    presets = all_presets()
+    if name not in presets:
         raise HTTPException(status_code=404, detail=f"Unknown preset: {name}")
-
-    preset = PRESETS[name]
-    cmd = preset["command"]
+    cmd = presets[name]["command"]
     apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
     if not state.power:
         apply_power(True)
     state.set_preset(name)
-
+    if source != "engine":
+        engine.notice_manual_change()
+    journal(source, {"event": "preset", "preset": name, "theta": cmd})
     return {"ok": True, **state.to_dict()}
 
-@app.post("/off")
-def toggle_power():
+
+def do_custom(hue: int, sat: int, bri: int, kelvin: int, source: str = "app") -> dict:
+    apply_color(hue, sat, bri, kelvin)
+    if not state.power:
+        apply_power(True)
+    state.set_custom(hue, sat, bri, kelvin)
+    if source != "engine":
+        engine.notice_manual_change()
+    journal(source, {"event": "custom",
+                     "theta": {"hue": hue, "sat": sat, "bri": bri, "kelvin": kelvin}})
+    return {"ok": True, **state.to_dict()}
+
+
+def do_off_toggle(source: str = "app") -> dict:
     state.toggle_power()
     apply_power(state.power)
-
     if state.power:
-        if state.mode == "preset" and state.active_preset in PRESETS:
-            cmd = PRESETS[state.active_preset]["command"]
+        presets = all_presets()
+        if state.mode == "preset" and state.active_preset in presets:
+            cmd = presets[state.active_preset]["command"]
             apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
         elif state.mode == "custom" and state.custom:
             c = state.custom
             apply_color(c["hue"], c["sat"], c["bri"], c["kelvin"])
-
+    engine.notice_manual_change()
+    journal(source, {"event": "power_toggle", "power": state.power})
     return {"ok": True, **state.to_dict()}
+
+
+# ---------------------------------------------------------------------------
+# Lex — natural language in (spec §5.1)
+# ---------------------------------------------------------------------------
+
+KEYWORD_SCENES = {
+    "warm":     {"hue": 30,  "sat": 40,  "bri": 50, "kelvin": 2500, "name": "warm"},
+    "cool":     {"hue": 210, "sat": 20,  "bri": 60, "kelvin": 5500, "name": "cool"},
+    "dim":      {"hue": 30,  "sat": 30,  "bri": 10, "kelvin": 2200, "name": "dim"},
+    "bright":   {"hue": 0,   "sat": 0,   "bri": 95, "kelvin": 4500, "name": "bright"},
+    "candle":   {"hue": 35,  "sat": 65,  "bri": 8,  "kelvin": 2000, "name": "candle"},
+    "ocean":    {"hue": 195, "sat": 80,  "bri": 45, "kelvin": 4000, "name": "ocean"},
+    "jazz":     {"hue": 25,  "sat": 60,  "bri": 20, "kelvin": 2200, "name": "jazz bar"},
+    "dawn":     {"hue": 20,  "sat": 45,  "bri": 40, "kelvin": 3000, "name": "dawn"},
+    "sunset":   {"hue": 15,  "sat": 75,  "bri": 35, "kelvin": 2200, "name": "sunset"},
+    "focus":    {"hue": 0,   "sat": 0,   "bri": 90, "kelvin": 4800, "name": "focus"},
+    "cozy":     {"hue": 35,  "sat": 55,  "bri": 25, "kelvin": 2300, "name": "cozy"},
+    "romantic": {"hue": 345, "sat": 70,  "bri": 18, "kelvin": 2200, "name": "romantic"},
+}
+
+LEX_SYSTEM_PROMPT = """You translate natural-language lighting requests into JSON.
+Respond ONLY with a JSON object, no prose, matching this schema:
+{"name": "<short scene name>",
+ "devices": {"key": {"hue":0-360,"sat":0-100,"bri":0-100,"kelvin":2000-6500},
+             "fill": {...same...}, "accent": {...same...}}}
+"key" is the main bulb, "fill" a floor lamp, "accent" a table lamp.
+Design a cohesive scene for the utterance; roles may differ subtly."""
+
+
+def _lex_llm(utterance: str) -> Optional[dict]:
+    """Try LLM translation. Returns scene dict or None."""
+    import requests as _rq
+    base = os.environ.get("LLM_BASE_URL")
+    key = os.environ.get("LLM_API_KEY")
+    anthropic = os.environ.get("ANTHROPIC_API_KEY")
+    try:
+        if base and key:
+            resp = _rq.post(
+                f"{base.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"model": os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+                      "messages": [{"role": "system", "content": LEX_SYSTEM_PROMPT},
+                                   {"role": "user", "content": utterance}],
+                      "temperature": 0.4},
+                timeout=20)
+            resp.raise_for_status()
+            text = resp.json()["choices"][0]["message"]["content"]
+        elif anthropic:
+            resp = _rq.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": anthropic,
+                         "anthropic-version": "2023-06-01"},
+                json={"model": os.environ.get("LLM_MODEL", "claude-3-5-haiku-latest"),
+                      "max_tokens": 512,
+                      "system": LEX_SYSTEM_PROMPT,
+                      "messages": [{"role": "user", "content": utterance}]},
+                timeout=20)
+            resp.raise_for_status()
+            text = resp.json()["content"][0]["text"]
+        else:
+            return None
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:]
+        return json.loads(text)
+    except Exception as e:
+        print(f"lex LLM failed, falling back: {e}")
+        return None
+
+
+def _lex_fallback(utterance: str) -> dict:
+    low = utterance.lower()
+    for kw, scene in KEYWORD_SCENES.items():
+        if kw in low:
+            s = dict(scene)
+            name = s.pop("name")
+            return {"name": name, "devices": {"key": s, "fill": s, "accent": s},
+                    "via": "keyword"}
+    # nothing matched → gentle warm default
+    s = {"hue": 30, "sat": 30, "bri": 40, "kelvin": 2700}
+    return {"name": "ambient", "devices": {"key": s, "fill": s, "accent": s},
+            "via": "keyword-default"}
+
+
+def do_lex(utterance: str, source: str = "app") -> dict:
+    scene = _lex_llm(utterance)
+    via = "llm"
+    if scene is None:
+        scene = _lex_fallback(utterance)
+        via = scene.pop("via", "keyword")
+    devs = scene.get("devices") or {}
+    key_state = devs.get("key") or next(iter(devs.values()), None)
+    if not key_state:
+        raise HTTPException(status_code=422, detail="lex produced no scene")
+    # apply per-role where possible
+    applied = False
+    for dev in registry.devices.values():
+        st = devs.get(dev.role) or key_state
+        if dev.enabled:
+            dev.apply(int(st["hue"]), int(st["sat"]), int(st["bri"]), int(st["kelvin"]))
+            applied = True
+    if not applied:
+        apply_color(int(key_state["hue"]), int(key_state["sat"]),
+                    int(key_state["bri"]), int(key_state["kelvin"]))
+    state.set_custom(int(key_state["hue"]), int(key_state["sat"]),
+                     int(key_state["bri"]), int(key_state["kelvin"]))
+    engine.notice_manual_change()  # lex is an excursion (spec §5.1)
+    journal(source, {"event": "lex", "utterance": utterance,
+                     "scene": scene.get("name"), "via": via, "theta": key_state})
+    return {"ok": True, "scene": scene.get("name"), "via": via,
+            "devices": devs, **state.to_dict()}
+
+
+# ---------------------------------------------------------------------------
+# Tex bridge — tail bridge/inbox.jsonl (spec §5.2)
+# ---------------------------------------------------------------------------
+
+_bridge_stop = threading.Event()
+
+
+def _bridge_tail():
+    BRIDGE_DIR.mkdir(exist_ok=True)
+    INBOX_FILE.touch(exist_ok=True)
+    pos = INBOX_FILE.stat().st_size  # start at EOF: only new lines
+    while not _bridge_stop.is_set():
+        try:
+            size = INBOX_FILE.stat().st_size
+            if size < pos:  # truncated/rotated
+                pos = 0
+            if size > pos:
+                with INBOX_FILE.open("r") as f:
+                    f.seek(pos)
+                    chunk = f.read()
+                    pos = f.tell()
+                for line in chunk.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except Exception:
+                        continue
+                    try:
+                        if "utterance" in msg:
+                            do_lex(str(msg["utterance"]), source="bridge")
+                        elif "preset" in msg:
+                            do_preset(str(msg["preset"]), source="bridge")
+                    except HTTPException as e:
+                        journal("bridge", {"event": "error", "detail": e.detail,
+                                           "line": line[:200]})
+                    except Exception as e:
+                        journal("bridge", {"event": "error", "detail": str(e),
+                                           "line": line[:200]})
+        except Exception as e:
+            print(f"bridge tail error: {e}")
+        _bridge_stop.wait(1.0)
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    engine.start()
+    t = threading.Thread(target=_bridge_tail, daemon=True, name="bridge-tail")
+    t.start()
+    print("Lumina v2 up — descent engine armed" if engine.armed
+          else "Lumina v2 up — engine disarmed")
+    yield
+    _bridge_stop.set()
+    engine.shutdown()
+
+
+app = FastAPI(title="Lumina", version="2.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+)
+
+
+# -- models -----------------------------------------------------------------
 
 class CustomCommand(BaseModel):
     hue: int = Field(ge=0, le=360)
@@ -289,11 +427,185 @@ class CustomCommand(BaseModel):
     bri: int = Field(ge=0, le=100)
     kelvin: int = Field(ge=2000, le=6500)
 
-@app.post("/custom")
-def set_custom(cmd: CustomCommand):
-    apply_color(cmd.hue, cmd.sat, cmd.bri, cmd.kelvin)
-    if not state.power:
-        apply_power(True)
-    state.set_custom(cmd.hue, cmd.sat, cmd.bri, cmd.kelvin)
 
-    return {"ok": True, **state.to_dict()}
+class LexBody(BaseModel):
+    utterance: str
+
+
+class MinimaBody(BaseModel):
+    name: str
+    description: Optional[str] = None
+    accent: Optional[str] = None
+    command: CustomCommand
+
+
+class ScheduleBody(BaseModel):
+    anchors: Optional[list] = None
+    wake: Optional[dict] = None
+    armed: Optional[bool] = None
+
+
+class PowerBody(BaseModel):
+    on: bool
+
+
+class SoloBody(BaseModel):
+    solo: bool = True
+
+
+# -- v2 handlers -----------------------------------------------------------
+
+def h_state():
+    return {**state.to_dict(),
+            "engine": engine.to_dict(),
+            "devices": registry.to_list()}
+
+
+def h_presets():
+    return {"presets": [
+        {"id": p["id"], "name": p["name"], "description": p["description"],
+         "accent": p["accent"], "command": p["command"]}
+        for p in all_presets().values()]}
+
+
+@app.get("/api/state")
+def api_state():
+    return h_state()
+
+
+@app.get("/api/presets")
+def api_presets():
+    return h_presets()
+
+
+@app.post("/api/preset/{name}")
+def api_preset(name: str):
+    return do_preset(name)
+
+
+@app.post("/api/off")
+def api_off():
+    return do_off_toggle()
+
+
+@app.post("/api/custom")
+def api_custom(cmd: CustomCommand):
+    return do_custom(cmd.hue, cmd.sat, cmd.bri, cmd.kelvin)
+
+
+@app.post("/api/lex")
+def api_lex(body: LexBody):
+    return do_lex(body.utterance)
+
+
+@app.post("/api/minima")
+def api_minima(body: MinimaBody):
+    minima = registry.config.setdefault("minima", {})
+    key = body.name.lower().replace(" ", "-")
+    minima[key] = {
+        "name": body.name,
+        "description": body.description or "saved minimum",
+        "accent": body.accent or "#5B7BB4",
+        "command": body.command.model_dump(),
+    }
+    registry.save_config()
+    journal("app", {"event": "minima_saved", "name": key})
+    return {"ok": True, "id": key, "presets": h_presets()["presets"]}
+
+
+@app.get("/api/schedule")
+def api_get_schedule():
+    return engine.to_dict()
+
+
+@app.put("/api/schedule")
+def api_put_schedule(body: ScheduleBody):
+    engine.update_schedule(anchors=body.anchors, wake=body.wake, armed=body.armed)
+    journal("app", {"event": "schedule_updated"})
+    return {"ok": True, "engine": engine.to_dict()}
+
+
+@app.post("/api/engine/resume")
+def api_engine_resume():
+    engine.resume()
+    return {"ok": True, "engine": engine.to_dict()}
+
+
+@app.post("/api/devices/discover")
+def api_discover():
+    result = registry.discover()
+    journal("app", {"event": "discover", **{k: result[k] for k in ("ok",)}})
+    return result
+
+
+@app.post("/api/device/{device_id}/power")
+def api_device_power(device_id: str, body: PowerBody):
+    if device_id not in registry.devices:
+        raise HTTPException(status_code=404, detail=f"Unknown device: {device_id}")
+    dev = registry.device_power(device_id, body.on)
+    journal("app", {"event": "device_power", "device": device_id, "on": body.on})
+    return {"ok": True, "device": dev.to_dict()}
+
+
+@app.post("/api/device/{device_id}/solo")
+def api_device_solo(device_id: str, body: SoloBody = SoloBody()):
+    if device_id not in registry.devices:
+        raise HTTPException(status_code=404, detail=f"Unknown device: {device_id}")
+    registry.set_solo(device_id if body.solo else None)
+    journal("app", {"event": "solo", "device": device_id, "solo": body.solo})
+    return {"ok": True, "solo": registry.solo, "devices": registry.to_list()}
+
+
+# -- v1 alias routes (spec §6) -------------------------------------------------
+
+@app.get("/state")
+def v1_state():
+    return state.to_dict()  # v1 shape, no engine/devices keys
+
+
+@app.get("/presets")
+def v1_presets():
+    return {"presets": [
+        {"id": p["id"], "name": p["name"], "description": p["description"],
+         "accent": p["accent"]} for p in all_presets().values()]}
+
+
+@app.post("/preset/{name}")
+def v1_preset(name: str):
+    return do_preset(name)
+
+
+@app.post("/off")
+def v1_off():
+    return do_off_toggle()
+
+
+@app.post("/custom")
+def v1_custom(cmd: CustomCommand):
+    return do_custom(cmd.hue, cmd.sat, cmd.bri, cmd.kelvin)
+
+
+# -- static PWA serving with SPA fallback (spec §7) ------------------------------
+
+@app.get("/", include_in_schema=False)
+def root():
+    index = UI_DIST / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return HTMLResponse("<html><body style='background:#0B0D12;color:#E8E0D0;"
+                        "font-family:monospace'><h1>LUMINA</h1>"
+                        "<p>Lumina API up, UI not built</p></body></html>")
+
+
+@app.get("/{path:path}", include_in_schema=False)
+def spa(path: str):
+    if path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    candidate = (UI_DIST / path).resolve()
+    try:
+        candidate.relative_to(UI_DIST.resolve())
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    if candidate.is_file():
+        return FileResponse(candidate)
+    return root()  # SPA fallback

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 /**
  * A pixel-art Dario who wanders in from the side,
@@ -271,17 +271,19 @@ export default function GhostVisitor() {
     return blink ? SPRITE_IDLE_BLINK : SPRITE_IDLE;
   })();
 
+  // Dario walks the hero's lower contour lines (spec §2 zone 7 — non-negotiable).
   return (
     <div
       style={{
         position: "absolute",
-        bottom: 4,
+        bottom: "14%",
         left: -40,
         pointerEvents: "none",
         transform: `${translateX} scaleX(${scaleX})`,
         transition,
         opacity,
         zIndex: 2,
+        filter: "saturate(0.85) brightness(0.95)",
       }}
     >
       <PixelSprite sprite={sprite} />

@@ -1,11 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { postLex, type CustomValues } from "../api";
 
-interface CustomValues {
-  hue: number;
-  sat: number;
-  bri: number;
-  kelvin: number;
-}
+/* ─── CustomPanel — v1 sliders restyled Blueprint Ember + lex text field (spec §5.1) ─── */
 
 interface Props {
   isOpen: boolean;
@@ -13,6 +9,7 @@ interface Props {
   onChange: (next: CustomValues) => void;
   onApply: () => void;
   onClose: () => void;
+  onLexApplied: () => void;
 }
 
 /** Convert HSL to hex for the preview swatch. */
@@ -30,7 +27,7 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-/* ─── Slider sub-component ─── */
+/* ─── Slider — 1px hairline track, ember fill, mono values ─── */
 
 function Slider({
   label,
@@ -38,7 +35,6 @@ function Slider({
   min,
   max,
   suffix,
-  accent,
   onChange,
 }: {
   label: string;
@@ -46,7 +42,6 @@ function Slider({
   min: number;
   max: number;
   suffix: string;
-  accent: string;
   onChange: (v: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -94,20 +89,20 @@ function Slider({
   };
 
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
         <span
           style={{
             fontFamily: "'DM Mono', monospace",
-            fontSize: 11,
-            letterSpacing: "0.08em",
+            fontSize: 10,
+            letterSpacing: "0.12em",
             color: "var(--text-muted)",
             textTransform: "uppercase",
           }}
         >
           {label}
         </span>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "var(--text)" }}>
+        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "var(--blueprint)" }}>
           {value}
           {suffix}
         </span>
@@ -118,47 +113,46 @@ function Slider({
         onTouchStart={handleStart}
         style={{
           position: "relative",
-          height: 32,
+          height: 30,
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           touchAction: "none",
         }}
       >
-        {/* Track background */}
+        {/* hairline track */}
         <div
           style={{
             position: "absolute",
             left: 0,
             right: 0,
-            height: 3,
-            borderRadius: 2,
-            background: "var(--border)",
+            height: 1,
+            background: "var(--line)",
           }}
         />
-        {/* Filled track */}
+        {/* ember fill */}
         <div
           style={{
             position: "absolute",
             left: 0,
             width: `${pct}%`,
-            height: 3,
-            borderRadius: 2,
-            background: accent,
+            height: 1,
+            background: "var(--ember)",
             transition: dragging.current ? "none" : "width 0.1s ease",
           }}
         />
-        {/* Thumb */}
+        {/* ember thumb */}
         <div
           style={{
             position: "absolute",
             left: `${pct}%`,
             transform: "translateX(-50%)",
-            width: 18,
-            height: 18,
+            width: 12,
+            height: 12,
             borderRadius: "50%",
-            background: accent,
-            boxShadow: `0 0 12px ${accent}66, 0 0 4px ${accent}44`,
+            background: "var(--bg)",
+            border: "1px solid var(--ember)",
+            boxShadow: "0 0 8px rgba(255,77,28,0.4)",
             transition: dragging.current ? "none" : "left 0.1s ease",
           }}
         />
@@ -169,8 +163,11 @@ function Slider({
 
 /* ─── CustomPanel ─── */
 
-export default function CustomPanel({ isOpen, values, onChange, onApply, onClose }: Props) {
+export default function CustomPanel({ isOpen, values, onChange, onApply, onClose, onLexApplied }: Props) {
   const [dragY, setDragY] = useState<number | null>(null);
+  const [utterance, setUtterance] = useState("");
+  const [lexBusy, setLexBusy] = useState(false);
+  const [lexStatus, setLexStatus] = useState<string | null>(null);
   const startY = useRef(0);
 
   const previewColor = hslToHex(values.hue, values.sat, Math.max(25, values.bri * 0.55));
@@ -190,6 +187,23 @@ export default function CustomPanel({ isOpen, values, onChange, onApply, onClose
 
   const set = (key: keyof CustomValues) => (v: number) =>
     onChange({ ...values, [key]: v });
+
+  const submitLex = async () => {
+    const text = utterance.trim();
+    if (!text || lexBusy) return;
+    setLexBusy(true);
+    setLexStatus(null);
+    try {
+      const result = await postLex(text);
+      setLexStatus(result.name ? `applied · ${result.name}` : "applied");
+      setUtterance("");
+      onLexApplied();
+    } catch {
+      setLexStatus("lex offline");
+    } finally {
+      setLexBusy(false);
+    }
+  };
 
   return (
     <>
@@ -218,9 +232,10 @@ export default function CustomPanel({ isOpen, values, onChange, onApply, onClose
           left: 0,
           right: 0,
           zIndex: 300,
-          background: `linear-gradient(180deg, #1A1726 0%, var(--bg) 100%)`,
-          borderRadius: "20px 20px 0 0",
-          padding: "12px 24px 40px",
+          background: "var(--bg-raise)",
+          borderTop: "1px solid var(--line)",
+          borderRadius: "14px 14px 0 0",
+          padding: "12px 24px 36px",
           transform: isOpen ? `translateY(${dragY || 0}px)` : "translateY(100%)",
           transition: dragY !== null ? "none" : "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
           boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
@@ -233,10 +248,9 @@ export default function CustomPanel({ isOpen, values, onChange, onApply, onClose
         <div
           style={{
             width: 36,
-            height: 4,
-            borderRadius: 2,
-            background: "var(--text-dim)",
-            margin: "0 auto 24px",
+            height: 2,
+            background: "var(--line)",
+            margin: "0 auto 22px",
           }}
         />
 
@@ -246,89 +260,111 @@ export default function CustomPanel({ isOpen, values, onChange, onApply, onClose
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: 28,
+            marginBottom: 22,
           }}
         >
           <span
             style={{
               fontFamily: "'Syne', sans-serif",
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 700,
-              letterSpacing: "0.16em",
-              color: "var(--text)",
+              letterSpacing: "0.22em",
+              color: "var(--bone)",
             }}
           >
-            CUSTOM
+            CUSTOM θ
           </span>
           <div
             style={{
-              width: 28,
-              height: 28,
+              width: 24,
+              height: 24,
               borderRadius: "50%",
               background: previewColor,
-              boxShadow: `0 0 16px ${previewColor}66`,
+              boxShadow: `0 0 14px ${previewColor}55`,
               transition: "all 0.15s ease",
-              border: "2px solid rgba(255,255,255,0.1)",
+              border: "1px solid var(--line)",
             }}
           />
         </div>
 
         {/* Sliders */}
-        <Slider
-          label="Hue"
-          value={values.hue}
-          min={0}
-          max={360}
-          suffix="°"
-          accent={previewColor}
-          onChange={set("hue")}
-        />
-        <Slider
-          label="Saturation"
-          value={values.sat}
-          min={0}
-          max={100}
-          suffix="%"
-          accent={previewColor}
-          onChange={set("sat")}
-        />
-        <Slider
-          label="Brightness"
-          value={values.bri}
-          min={0}
-          max={100}
-          suffix="%"
-          accent={previewColor}
-          onChange={set("bri")}
-        />
-        <Slider
-          label="Kelvin"
-          value={values.kelvin}
-          min={2000}
-          max={6500}
-          suffix="K"
-          accent={previewColor}
-          onChange={set("kelvin")}
-        />
+        <Slider label="Hue" value={values.hue} min={0} max={360} suffix="°" onChange={set("hue")} />
+        <Slider label="Saturation" value={values.sat} min={0} max={100} suffix="%" onChange={set("sat")} />
+        <Slider label="Brightness" value={values.bri} min={0} max={100} suffix="%" onChange={set("bri")} />
+        <Slider label="Kelvin" value={values.kelvin} min={2000} max={6500} suffix="K" onChange={set("kelvin")} />
+
+        {/* Lex text field (spec §5.1) */}
+        <div style={{ display: "flex", gap: 8, marginTop: 4, marginBottom: 16 }}>
+          <input
+            type="text"
+            value={utterance}
+            onChange={(e) => setUtterance(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submitLex()}
+            placeholder="describe the light…"
+            style={{
+              flex: 1,
+              background: "var(--bg)",
+              border: "1px solid var(--line)",
+              borderRadius: 4,
+              padding: "10px 12px",
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 11,
+              color: "var(--bone)",
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={submitLex}
+            disabled={lexBusy}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--ember)",
+              borderRadius: 4,
+              color: "var(--ember)",
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 10,
+              letterSpacing: "0.1em",
+              padding: "0 14px",
+              cursor: "pointer",
+              opacity: lexBusy ? 0.5 : 1,
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            {lexBusy ? "…" : "LEX"}
+          </button>
+        </div>
+        {lexStatus && (
+          <div
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 9,
+              letterSpacing: "0.1em",
+              color: "var(--blueprint)",
+              marginTop: -10,
+              marginBottom: 12,
+            }}
+          >
+            {lexStatus}
+          </div>
+        )}
 
         {/* Apply button */}
         <button
           onClick={onApply}
           style={{
             width: "100%",
-            marginTop: 8,
-            padding: "15px 0",
-            background: `linear-gradient(135deg, ${previewColor}33 0%, ${previewColor}18 100%)`,
-            border: `1px solid ${previewColor}55`,
-            borderRadius: 12,
-            color: "var(--text)",
+            marginTop: 4,
+            padding: "14px 0",
+            background: "transparent",
+            border: "1px solid var(--ember)",
+            borderRadius: 6,
+            color: "var(--ember)",
             fontFamily: "'Syne', sans-serif",
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: 700,
-            letterSpacing: "0.16em",
+            letterSpacing: "0.2em",
             cursor: "pointer",
             transition: "all 0.3s ease",
-            boxShadow: `0 0 20px ${previewColor}22`,
             WebkitTapHighlightColor: "transparent",
           }}
         >

@@ -2,3 +2,14 @@ node_modules/
 __pycache__/
 *.pyc
 .lumina_state.json
+
+# Lumina v2 runtime state
+.lumina_state.json
+.lumina_engine.json
+bridge/inbox.jsonl
+bridge/journal.jsonl
+deploy/logs/
+.env
+
+.venv/
+deploy/logs/
