@@ -38,6 +38,8 @@ html,
 body,
 #root {
   height: 100%;
+  height: 100dvh; /* iOS Safari 100% can be shorter than the true visual
+                     viewport in some contexts; dvh tracks it exactly */
   width: 100%;
   overflow: hidden;
   background: var(--bg);

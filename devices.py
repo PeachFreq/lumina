@@ -146,6 +146,17 @@ class LifxLanDevice(Device):
 # Control:   JSON UDP to <device_ip>:4003.
 # ---------------------------------------------------------------------------
 
+# Per-SKU diffuser correction: the Govee H6022 "table" unit renders colors
+# less saturated than the H6076 "floor" unit at identical instructed RGB.
+# Force full saturation on this SKU whenever a saturated color is sent.
+# NOTE: brightness-based theories (scaling down OR flooring up) were both
+# tried 2026-08-30 and neither reliably fixed whitewash on this SKU across
+# presets — see PRESETS device_overrides in api.py for the empirical,
+# per-preset table-lamp values Cody actually confirmed by eye instead.
+GOVEE_WASHOUT_SKU_BIAS = {
+    "H6022": {"force_full_sat": True},
+}
+
 GOVEE_MCAST_ADDR = "239.255.255.250"
 GOVEE_SCAN_PORT = 4001
 GOVEE_REPLY_PORT = 4002
@@ -268,9 +279,8 @@ class GoveeDevice(Device):
     # -- Device interface ---------------------------------------------------
 
     def apply(self, hue: int, sat: int, bri: int, kelvin: int) -> None:
-        msgs = [{"msg": {"cmd": "turn", "data": {"value": 1}}},
-                {"msg": {"cmd": "brightness",
-                         "data": {"value": max(1, min(100, bri))}}}]
+        bias = GOVEE_WASHOUT_SKU_BIAS.get(self.sku or "", {})
+        eff_bri = bri
         if sat > 0:
             # Govee diffusers wash saturated warm hues toward white — bias
             # toward the LIFX reference: deepen saturation, nudge hue orange
@@ -278,12 +288,17 @@ class GoveeDevice(Device):
             if hue < 70 or hue > 340:  # warm territory
                 eff_hue = max(0, hue - 6)
                 eff_sat = min(100, int(sat * 1.30))
+            if bias.get("force_full_sat"):
+                eff_sat = 100
             rgb_int = hsbk_to_rgb_int(eff_hue, eff_sat, bri)
             r, g, b = (rgb_int >> 16) & 0xFF, (rgb_int >> 8) & 0xFF, rgb_int & 0xFF
         else:
             # white presets: render kelvin as warm RGB ourselves — the H6022's
             # LAN colorTemInKelvin path shows stark white regardless of kelvin
             r, g, b = kelvin_to_rgb(kelvin)
+        msgs = [{"msg": {"cmd": "turn", "data": {"value": 1}}},
+                {"msg": {"cmd": "brightness",
+                         "data": {"value": max(1, min(100, eff_bri))}}}]
         msgs.append({"msg": {"cmd": "colorwc", "data": {
             "color": {"r": r, "g": g, "b": b},
             "colorTemInKelvin": 0}}})
@@ -357,12 +372,18 @@ class DeviceRegistry:
         return [d for d in self.devices.values() if d.enabled]
 
     def apply_all(self, hue: int, sat: int, bri: int, kelvin: int,
-                  role_offsets: Optional[dict] = None) -> None:
+                  role_offsets: Optional[dict] = None,
+                  device_overrides: Optional[dict] = None) -> None:
         for d in self._targets():
             b = bri
             if role_offsets and d.role in role_offsets:
                 b = max(0, min(100, bri + role_offsets[d.role].get("bri", 0)))
-            d.apply(hue, sat, b, kelvin)
+            if device_overrides and d.id in device_overrides:
+                ov = device_overrides[d.id]
+                d.apply(ov.get("hue", hue), ov.get("sat", sat),
+                        ov.get("bri", b), ov.get("kelvin", kelvin))
+            else:
+                d.apply(hue, sat, b, kelvin)
 
     def power_all(self, on: bool) -> None:
         for d in self._targets():

@@ -57,7 +57,7 @@ function ContourGlyph({ accent, active }: { accent: string; active: boolean }) {
 
 export default function MinimaGrid({ minima, activeId, isOn, isCustom, onSelect }: Props) {
   return (
-    <div className="minima-grid" style={{ padding: "12px 0" }}>
+    <div className="minima-grid" style={{ padding: "8px 0" }}>
       {minima.map((m) => {
         const active = isOn && !isCustom && m.id === activeId;
         return (

@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "./styles/globals.css";
 import "./styles/presets.css";
 import Masthead from "./components/Masthead";
 import UpdateRuleStrip from "./components/UpdateRuleStrip";
 import MinimaGrid, { type MinimaData } from "./components/MinimaGrid";
 import DeviceRack from "./components/DeviceRack";
+import BrightnessSlider from "./components/BrightnessSlider";
 import CustomPanel from "./components/CustomPanel";
 import ScheduleSheet from "./components/ScheduleSheet";
 import {
@@ -14,6 +15,7 @@ import {
   getState,
   setDevicePower,
   soloDevice,
+  setMasterBrightness,
   MOCK_DEVICES,
   type BulbState,
   type DeviceInfo,
@@ -24,7 +26,7 @@ import {
 
 const MINIMA: MinimaData[] = [
   { id: "morning", name: "MORNING", desc: "warm white", accent: "#F5C882", hue: 40, sat: 0, bri: 70, kelvin: 3000 },
-  { id: "reading", name: "READING", desc: "neutral white", accent: "#B8CCE4", hue: 220, sat: 0, bri: 90, kelvin: 4500 },
+  { id: "daylight", name: "DAYLIGHT", desc: "neutral white · brightest, coldest", accent: "#B8CCE4", hue: 220, sat: 0, bri: 90, kelvin: 4500 },
   { id: "relax", name: "RELAX", desc: "warm amber", accent: "#E8A64C", hue: 35, sat: 60, bri: 35, kelvin: 2500 },
   { id: "honey", name: "HONEY", desc: "amber-gold · reading in bed", accent: "#D4A034", hue: 42, sat: 80, bri: 25, kelvin: 2200 },
   { id: "sleep", name: "SLEEP", desc: "red-orange · near dark", accent: "#C43214", hue: 15, sat: 100, bri: 5, kelvin: 2500 },
@@ -41,6 +43,16 @@ export default function App() {
   const [customValues, setCustomValues] = useState({ hue: 280, sat: 80, bri: 50, kelvin: 3500 });
   const [engine, setEngine] = useState<EngineState | null>(null);
   const [devices, setDevices] = useState<DeviceInfo[]>(MOCK_DEVICES);
+  const [masterBrightness, setMasterBrightnessState] = useState<number | null>(null);
+
+  // Suppresses the periodic /api/state poll from overwriting the slider
+  // with a stale value while the user is actively dragging it, or for a
+  // short grace window after release — the POST to /api/brightness and
+  // the next scheduled GET /api/state poll can race, and without this
+  // guard the poll sometimes wins and the slider visibly "rubber-bands"
+  // back to the pre-drag value (bug reported 2026-08-30: intermittent,
+  // looked like flakiness but was a real race condition).
+  const brightnessLocalUntil = useRef(0);
 
   /* ─── Sync from backend (mock defaults stand when unreachable) ─── */
 
@@ -55,6 +67,9 @@ export default function App() {
         }
         if (s.engine) setEngine(s.engine);
         if (s.devices && s.devices.length) setDevices(s.devices);
+        if (typeof s.master_brightness === "number" && Date.now() > brightnessLocalUntil.current) {
+          setMasterBrightnessState(s.master_brightness);
+        }
       })
       .catch(() => {
         /* Backend unreachable — mock/default state stands */
@@ -80,6 +95,11 @@ export default function App() {
     setActivePresetId(id);
     setIsCustom(false);
     setIsOn(true);
+    const m = MINIMA.find((x) => x.id === id);
+    if (m) {
+      setMasterBrightnessState(m.bri); // preset's own design brightness — matches backend snap
+      brightnessLocalUntil.current = Date.now() + 2000;
+    }
     activatePreset(id).catch(console.error);
   }, []);
 
@@ -101,10 +121,24 @@ export default function App() {
   }, []);
 
   const handleSolo = useCallback((id: string) => {
-    setDevices((prev) =>
-      prev.map((d) => ({ ...d, solo: d.id === id }))
-    );
-    soloDevice(id).catch(console.error);
+    setDevices((prev) => {
+      const wasSolo = prev.find((d) => d.id === id)?.solo;
+      const nextSolo = !wasSolo; // holding an already-solo'd device un-solos it
+      soloDevice(id, nextSolo).catch(console.error);
+      return prev.map((d) => ({ ...d, solo: nextSolo && d.id === id }));
+    });
+  }, []);
+
+  const handleBrightnessChange = useCallback((v: number) => {
+    // Live drag feedback — also extends the poll-suppression window so a
+    // 30s-interval refresh landing mid-drag can't yank the handle back.
+    brightnessLocalUntil.current = Date.now() + 2500;
+    setMasterBrightnessState(v);
+  }, []);
+
+  const handleBrightnessCommit = useCallback((v: number) => {
+    brightnessLocalUntil.current = Date.now() + 2500;
+    setMasterBrightness(v).catch(console.error);
   }, []);
 
   return (
@@ -136,36 +170,44 @@ export default function App() {
         <rect width="100%" height="100%" filter="url(#lumina-noise)" />
       </svg>
 
-      {/* ─── Page border frame — 1px --line inset, like a printed plate ─── */}
+      {/* ─── Page border frame — 1px --line inset, like a printed plate ───
+          borderRadius rounds the frame's own corners so they don't sit
+          as sharp 90° angles right where the iPhone's curved screen glass
+          starts — at a 6px inset that square corner peeked out past the
+          curvature and looked clipped (reported on iPhone 16 Pro, 2026-08-30) */}
       <div
         style={{
           position: "fixed",
           inset: 6,
           border: "1px solid var(--line)",
+          borderRadius: 34,
           pointerEvents: "none",
           zIndex: 99,
         }}
       />
 
-      {/* ─── Scrolling content column ─── */}
+      {/* ─── Content column — fixed, non-scrolling (2026-08-30: everything
+          fits within the iPhone viewport now that spacing was tightened,
+          so scrolling was pure downside — it let an accidental drag shift
+          the controls up/down, which Cody didn't want) ─── */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
           flex: 1,
-          overflowY: "auto",
-          WebkitOverflowScrolling: "touch",
+          overflow: "hidden",
+          touchAction: "none",
         }}
       >
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            padding: "max(env(safe-area-inset-top), 24px) 20px 0",
+            padding: "max(env(safe-area-inset-top), 20px) 20px max(env(safe-area-inset-bottom), 12px)",
             maxWidth: 430,
             margin: "0 auto",
             width: "100%",
-            minHeight: "100%",
+            height: "100%",
           }}
         >
           <Masthead isOn={isOn} modeLabel={statusLabel} bri={statusBri} kelvin={statusKelvin} />
@@ -180,11 +222,18 @@ export default function App() {
             onSelect={handlePreset}
           />
 
+          <BrightnessSlider
+            value={masterBrightness ?? statusBri}
+            onChange={handleBrightnessChange}
+            onCommit={handleBrightnessCommit}
+            disabled={!isOn}
+          />
+
           <DeviceRack devices={devices} onTogglePower={handleDevicePower} onSolo={handleSolo} />
 
           {/* ─── Footer controls ─── */}
 
-          <div style={{ animation: "fadeIn 0.6s ease both 0.2s", paddingBottom: 8 }}>
+          <div style={{ animation: "fadeIn 0.6s ease both 0.2s", paddingBottom: 6 }}>
             <button
               onClick={handleOff}
               style={{
@@ -212,7 +261,7 @@ export default function App() {
               display: "flex",
               gap: 8,
               animation: "fadeIn 0.6s ease both 0.3s",
-              paddingBottom: 34,
+              paddingBottom: 4,
             }}
           >
             <button

@@ -14,7 +14,7 @@ export default function Masthead({ isOn, modeLabel, bri, kelvin }: Props) {
         display: "flex",
         alignItems: "baseline",
         justifyContent: "space-between",
-        padding: "18px 2px 10px",
+        padding: "14px 2px 8px",
         borderBottom: "1px solid var(--line)",
         animation: "fadeIn 0.6s ease both",
       }}

@@ -146,7 +146,7 @@ export default function DeviceRack({ devices, onTogglePower, onSolo }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 6,
-        padding: "4px 0 12px",
+        padding: "4px 0 10px",
         animation: "fadeIn 0.6s ease both 0.15s",
       }}
     >
@@ -159,7 +159,7 @@ export default function DeviceRack({ devices, onTogglePower, onSolo }: Props) {
           paddingBottom: 2,
         }}
       >
-        DEVICE RACK · HOLD TO SOLO
+        DEVICE RACK · HOLD TO SOLO · HOLD SOLO'D LAMP TO CLEAR
       </div>
       {devices.map((d) => (
         <DeviceRow key={d.id} device={d} onTogglePower={onTogglePower} onSolo={onSolo} />

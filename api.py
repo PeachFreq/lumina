@@ -43,20 +43,30 @@ PRESETS = {
         "description": "warm white 70%, 3000K — waking up", "accent": "#F5C882",
         "command": {"hue": 0, "sat": 0, "bri": 70, "kelvin": 3000},
     },
-    "reading": {
-        "id": "reading", "name": "Reading",
-        "description": "neutral white 90%, 4500K — focus / book", "accent": "#B8CCE4",
+    "daylight": {
+        "id": "daylight", "name": "Daylight",
+        "description": "neutral white 90%, 4500K — brightest, coldest, most visibility", "accent": "#B8CCE4",
         "command": {"hue": 0, "sat": 0, "bri": 90, "kelvin": 4500},
     },
     "relax": {
         "id": "relax", "name": "Relax",
-        "description": "warm amber 35%, 2500K — evening wind-down", "accent": "#E8A64C",
-        "command": {"hue": 0, "sat": 0, "bri": 35, "kelvin": 2500},
+        "description": "warm amber 35%, direct RGB — evening wind-down", "accent": "#E8A64C",
+        "command": {"hue": 30, "sat": 65, "bri": 35, "kelvin": 2500},
+        # table lamp swapped to Honey's old command 2026-08-30 — Cody found
+        # the table lamp rendered MORE honey-like warmth under Honey's
+        # command than under Relax's own command. See devices.py
+        # GOVEE_WASHOUT_SKU_BIAS note: table lamp (H6022) doesn't respond
+        # to hue/sat/bri predictably like the floor lamp/LIFX do — when a
+        # preset's table lamp looks wrong, try another preset's command on
+        # it empirically rather than reasoning from theory.
+        "device_overrides": {"govee-table": {"hue": 35, "sat": 100, "bri": 25, "kelvin": 2200}},
     },
     "honey": {
         "id": "honey", "name": "Honey",
-        "description": "amber-gold 25%, 2200K — warm reggae evening", "accent": "#D4A034",
-        "command": {"hue": 45, "sat": 70, "bri": 25, "kelvin": 2200},
+        "description": "gushing warm honey-gold 25%, 2200K — warm reggae evening", "accent": "#D46A00",
+        "command": {"hue": 35, "sat": 100, "bri": 25, "kelvin": 2200},
+        # table lamp swapped to Relax's old command 2026-08-30 (see note above)
+        "device_overrides": {"govee-table": {"hue": 30, "sat": 65, "bri": 35, "kelvin": 2500}},
     },
     "sleep": {
         "id": "sleep", "name": "Sleep",
@@ -66,14 +76,22 @@ PRESETS = {
     },
     "cinema": {
         "id": "cinema", "name": "Cinema",
-        "description": "warm ember glow 2%, 2700K — movie theater", "accent": "#C47A12",
-        "command": {"hue": 35, "sat": 30, "bri": 2, "kelvin": 2700},
+        "description": "deep ember glow 2%, saturated orange-red — movie theater", "accent": "#B33A0A",
+        "command": {"hue": 22, "sat": 95, "bri": 2, "kelvin": 2700},
     },
     "velvet": {
         "id": "velvet", "name": "Velvet",
         "description": "deep fuchsia (#E5006A) 32%, 3500K — mood / CitizenM magenta",
         "accent": "#E5006A",
         "command": {"hue": 330, "sat": 100, "bri": 32, "kelvin": 3500},
+        # table lamp (H6022) still rendered whitish-purple at sat=100 with
+        # the earlier hue335/bri20 attempt. Cody then hand-tuned the table
+        # lamp directly (via Govee app) to RGB(255,0,79) — queried live via
+        # devStatus UDP 2026-08-30 and confirmed as "more velvety, more
+        # red." hue=347 through our apply() pipeline (force_full_sat +
+        # warm-hue -6 shift) reproduces RGB(255,0,80), matching almost
+        # exactly. bri kept at 20 per Cody's live-measured brightness.
+        "device_overrides": {"govee-table": {"hue": 347, "sat": 100, "bri": 20, "kelvin": 3500}},
     },
 }
 
@@ -121,6 +139,11 @@ class BulbState:
         self.mode: str = "preset"  # "preset" | "custom" | "off"
         self.active_preset: str = "relax"
         self.custom: Optional[dict] = None
+        self.brightness_scale: int = 100  # DEPRECATED, kept for old state files
+        self.master_brightness: Optional[int] = None  # ABSOLUTE room brightness 1-100
+        self.last_theta: Optional[dict] = None  # design (preset's own) hue/sat/bri/kelvin
+        self.last_device_overrides: Optional[dict] = None  # design device_overrides, unscaled
+        self.last_bri_ratios: Optional[dict] = None  # per-device bri ratio vs last_theta['bri']
         self._load()
 
     def _load(self):
@@ -131,6 +154,11 @@ class BulbState:
                 self.mode = data.get("mode", "preset")
                 self.active_preset = data.get("active_preset", "relax")
                 self.custom = data.get("custom")
+                self.brightness_scale = data.get("brightness_scale", 100)
+                self.master_brightness = data.get("master_brightness")
+                self.last_theta = data.get("last_theta")
+                self.last_device_overrides = data.get("last_device_overrides")
+                self.last_bri_ratios = data.get("last_bri_ratios")
             except Exception:
                 pass
 
@@ -139,7 +167,10 @@ class BulbState:
 
     def to_dict(self):
         return {"power": self.power, "mode": self.mode,
-                "active_preset": self.active_preset, "custom": self.custom}
+                "active_preset": self.active_preset, "custom": self.custom,
+                "master_brightness": self.master_brightness,
+                "last_theta": self.last_theta,
+                "last_device_overrides": self.last_device_overrides}
 
     def set_preset(self, name: str):
         self.power = True
@@ -166,8 +197,75 @@ state = BulbState()
 # Light actuation
 # ---------------------------------------------------------------------------
 
-def apply_color(hue: int, sat: int, bri: int, kelvin: int):
-    registry.apply_all(hue, sat, bri, kelvin)
+def apply_color(hue: int, sat: int, bri: int, kelvin: int,
+                 device_overrides: Optional[dict] = None,
+                 remember: bool = True):
+    """Applies a color. `bri` is the preset/custom's own DESIGN brightness
+    (0-100) for the primary/group command. If remember=True (the normal
+    case — preset tap, custom apply, engine tick), this becomes the new
+    baseline the master brightness slider reads from: master_brightness
+    snaps to this design bri, so the slider always shows the TRUE current
+    room brightness, not some arbitrary carried-over percentage.
+
+    If a master_brightness has since been set that differs from bri (the
+    user dragged the slider), every subsequent apply_color with
+    remember=False (used internally by set_master_brightness) rescales
+    every device proportionally against the original design ratios, so
+    the room's own relative lamp balance (e.g. table lamp intentionally
+    dimmer than floor lamp per a preset's device_overrides) is preserved
+    while the overall level moves up or down — including ABOVE the
+    preset's own design bri, since master_brightness is an independent
+    dial, not a multiplier capped at the preset's ceiling."""
+    if remember:
+        state.last_theta = {"hue": hue, "sat": sat, "bri": bri, "kelvin": kelvin}
+        state.last_device_overrides = device_overrides
+        state.master_brightness = bri if bri > 0 else state.master_brightness or 1
+        state._save()
+
+    design_bri = (state.last_theta or {}).get("bri", bri) or 1
+    target = state.master_brightness if state.master_brightness is not None else bri
+    scale = (target / design_bri) if design_bri > 0 else 1.0
+
+    def scaled(b: int) -> int:
+        if b <= 0:
+            return 0
+        return max(1, min(100, round(b * scale)))
+
+    out_bri = scaled(bri)
+    out_overrides = None
+    if device_overrides:
+        out_overrides = {}
+        for dev_id, ov in device_overrides.items():
+            ov2 = dict(ov)
+            if "bri" in ov2:
+                ov2["bri"] = scaled(ov2["bri"])
+            out_overrides[dev_id] = ov2
+
+    registry.apply_all(hue, sat, out_bri, kelvin, device_overrides=out_overrides)
+
+
+def set_master_brightness(level: int, source: str = "app"):
+    """Master brightness dial (spec: horizontal slider below the preset
+    grid, 2026-08-30). ABSOLUTE room brightness 1-100 — not a multiplier.
+    Rescales whatever is currently active (preset or custom) across ALL
+    lamps proportionally, honoring each lamp's designed relative balance,
+    and can go ABOVE the active preset's own design brightness.
+
+    Also registers as a manual change (like preset/custom taps) so the
+    Descent engine drops into 'excursion' and won't silently reassert its
+    own trajectory brightness over the user's slider value on its next
+    tick — this was a real bug (2026-08-30): during an active descent
+    window the engine could overwrite the slider within ~60s, which
+    looked like unexplained rubber-banding."""
+    state.master_brightness = max(1, min(100, level))
+    state._save()
+    if state.power and state.last_theta:
+        t = state.last_theta
+        apply_color(t["hue"], t["sat"], t["bri"], t["kelvin"],
+                    device_overrides=state.last_device_overrides,
+                    remember=False)
+    if source != "engine":
+        engine.notice_manual_change()
 
 
 def apply_power(on: bool):
@@ -270,8 +368,10 @@ def do_preset(name: str, source: str = "app") -> dict:
     presets = all_presets()
     if name not in presets:
         raise HTTPException(status_code=404, detail=f"Unknown preset: {name}")
-    cmd = presets[name]["command"]
-    apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"])
+    p = presets[name]
+    cmd = p["command"]
+    apply_color(cmd["hue"], cmd["sat"], cmd["bri"], cmd["kelvin"],
+                device_overrides=p.get("device_overrides"))
     # Drift disabled 2026-08-30 (Cody: motion felt seasick, not relaxing).
     # Engine kept dormant pending a much subtler design.
     drift.stop()
@@ -530,6 +630,10 @@ class SoloBody(BaseModel):
     solo: bool = True
 
 
+class BrightnessBody(BaseModel):
+    level: int = Field(ge=1, le=100)
+
+
 # -- v2 handlers -----------------------------------------------------------
 
 def h_state():
@@ -631,6 +735,16 @@ def api_device_solo(device_id: str, body: SoloBody = SoloBody()):
     registry.set_solo(device_id if body.solo else None)
     journal("app", {"event": "solo", "device": device_id, "solo": body.solo})
     return {"ok": True, "solo": registry.solo, "devices": registry.to_list()}
+
+
+@app.post("/api/brightness")
+def api_brightness(body: BrightnessBody):
+    """Master brightness dial — ABSOLUTE room brightness 1-100, rescales
+    the currently active state across all lamps proportionally (spec:
+    horizontal slider below the preset grid, 2026-08-30)."""
+    set_master_brightness(body.level, source="app")
+    journal("app", {"event": "master_brightness", "level": state.master_brightness})
+    return {"ok": True, **state.to_dict()}
 
 
 # -- v1 alias routes (spec §6) -------------------------------------------------

@@ -17,7 +17,7 @@ export default function UpdateRuleStrip({ engine }: Props) {
         fontSize: 10,
         letterSpacing: "0.08em",
         textAlign: "center",
-        padding: "10px 0",
+        padding: "8px 0",
         borderTop: "1px solid var(--line)",
         borderBottom: "1px solid var(--line)",
         whiteSpace: "nowrap",

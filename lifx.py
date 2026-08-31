@@ -10,7 +10,7 @@ Usage:
 
 Presets:
     morning   warm white, 70%   — waking up
-    reading   neutral white, 90% — focus/book
+    reading   [renamed to 'daylight' 2026-08-30 — kept alias below]
     relax     warm amber, 35%   — evening wind-down
     sleep     deep red-orange, 5% — near-dark, low cortisol
     dim       warm, 15%          — very low ambient
@@ -39,16 +39,16 @@ PRESETS = {
         "kelvin": 3000,
         "desc": "warm white 70% — waking up",
     },
-    "reading": {
+    "daylight": {
         "hue": 0,
         "sat": 0,
         "bri": int(65535 * 0.90),
         "kelvin": 4500,
-        "desc": "neutral white 90% — focus/book",
+        "desc": "neutral white 90%, coldest/brightest — max visibility",
     },
     "relax": {
-        "hue": 0,
-        "sat": 0,
+        "hue": int(30 / 360 * 65535),
+        "sat": int(65535 * 0.65),
         "bri": int(65535 * 0.35),
         "kelvin": 2500,
         "desc": "warm amber 35% — evening wind-down",
@@ -61,18 +61,18 @@ PRESETS = {
         "desc": "deep red-orange 5% — near-dark, low cortisol",
     },
     "honey": {
-        "hue": int(45 / 360 * 65535),
-        "sat": int(65535 * 0.70),
+        "hue": int(35 / 360 * 65535),
+        "sat": int(65535 * 1.00),
         "bri": int(65535 * 0.25),
         "kelvin": 2200,
-        "desc": "amber-gold 25% — warm reggae evening",
+        "desc": "gushing warm honey-gold 25% — warm reggae evening",
     },
     "cinema": {
-        "hue": int(30 / 360 * 65535),
-        "sat": int(65535 * 0.20),
+        "hue": int(22 / 360 * 65535),
+        "sat": int(65535 * 0.95),
         "bri": int(65535 * 0.02),
         "kelvin": 2700,
-        "desc": "ember glow 2% — movie theater",
+        "desc": "deep ember glow 2% — movie theater",
     },
     "velvet": {
         "hue": int(332 / 360 * 65535),  # ~#E5006A citizenM magenta

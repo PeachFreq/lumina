@@ -62,6 +62,7 @@ export interface BulbState {
   mode: "preset" | "custom" | "off" | string;
   active_preset: string | null;
   custom: CustomValues | null;
+  master_brightness?: number | null;
   engine?: EngineState | null;
   devices?: DeviceInfo[] | null;
 }
@@ -156,9 +157,17 @@ export async function setDevicePower(id: string, on: boolean): Promise<MutationR
   });
 }
 
-export async function soloDevice(id: string): Promise<MutationResult> {
+export async function soloDevice(id: string, solo: boolean = true): Promise<MutationResult> {
   return request<MutationResult>(`/device/${encodeURIComponent(id)}/solo`, {
     method: "POST",
+    body: JSON.stringify({ solo }),
+  });
+}
+
+export async function setMasterBrightness(level: number): Promise<MutationResult> {
+  return request<MutationResult>("/brightness", {
+    method: "POST",
+    body: JSON.stringify({ level }),
   });
 }
 
