@@ -290,8 +290,21 @@ def _engine_power(on: bool):
     state._save()
 
 
+def _engine_current_bri() -> Optional[int]:
+    """Room's real current brightness — either the master brightness dial
+    if the user has set one, or whatever theta the last apply used. Used
+    by the Descent engine's one-way ratchet so its 9pm trigger can never
+    push the room brighter than wherever it currently sits."""
+    if state.master_brightness is not None:
+        return state.master_brightness
+    if state.last_theta is not None:
+        return state.last_theta.get("bri")
+    return None
+
+
 engine = Engine(apply_cb=_engine_apply, power_cb=_engine_power,
-                journal_cb=lambda e: journal("engine", e))
+                journal_cb=lambda e: journal("engine", e),
+                current_bri_cb=_engine_current_bri)
 
 
 # ---------------------------------------------------------------------------

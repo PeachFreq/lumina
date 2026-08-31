@@ -63,10 +63,12 @@ class Engine:
     def __init__(self,
                  apply_cb: Callable[[int, int, int, int], None],
                  power_cb: Callable[[bool], None],
-                 journal_cb: Optional[Callable[[dict], None]] = None):
+                 journal_cb: Optional[Callable[[dict], None]] = None,
+                 current_bri_cb: Optional[Callable[[], Optional[int]]] = None):
         self._apply = apply_cb
         self._power = power_cb
         self._journal = journal_cb or (lambda e: None)
+        self._current_bri_cb = current_bri_cb
         self._lock = threading.Lock()
 
         self.armed = True
@@ -76,6 +78,7 @@ class Engine:
         self.excursion_until: Optional[str] = None  # "HH:MM" of next anchor
         self._last_state: Optional[dict] = None
         self._powered_off_at_min = False
+        self._descent_ceiling: Optional[int] = None  # one-way ratchet: never increase bri during descent
 
         self._load()
         self.scheduler = BackgroundScheduler()
@@ -245,6 +248,7 @@ class Engine:
         with self._lock:
             if not self.armed:
                 self.phase = "idle"
+                self._descent_ceiling = None
                 return
 
             # excursion: auto-resume only when we reach the next anchor
@@ -252,6 +256,7 @@ class Engine:
                 if self.excursion_until is not None and mins >= _parse_hm(self.excursion_until):
                     self.phase = "idle"
                     self.excursion_until = None
+                    self._descent_ceiling = None  # re-baseline off whatever the room is now
                     self._journal({"event": "excursion_auto_resume"})
                 else:
                     return
@@ -263,6 +268,7 @@ class Engine:
                 if mins == end:
                     self._migrate_wake(now.date())
                 self.phase = "ascent"
+                self._descent_ceiling = None
                 self._emit(astate, source="ascent")
                 return
 
@@ -271,6 +277,24 @@ class Engine:
             if seg is not None:
                 a, b, p = seg
                 st = self._interp(a["state"], b["state"], p, a.get("curve", "linear"))
+
+                # ONE-WAY RATCHET (Cody, 2026-08-30): the descent must never
+                # make the room brighter/harsher than it currently is, no
+                # matter what the schedule's own anchor values say. On first
+                # entering a descent window, baseline the ceiling off the
+                # room's real current brightness (so if you're enjoying a
+                # cozier/dimmer level than the schedule's starting anchor —
+                # e.g. via the brightness slider or a dimmer preset — the
+                # 9pm trigger will never yank it back UP to the anchor's
+                # bri). From then on the ceiling only ever ratchets DOWN
+                # with the schedule, never up, even if a later anchor is
+                # numerically brighter than an earlier one.
+                if self._descent_ceiling is None:
+                    current = self._current_bri_cb() if self._current_bri_cb else None
+                    self._descent_ceiling = current if current is not None else st["bri"]
+                st["bri"] = min(st["bri"], self._descent_ceiling)
+                self._descent_ceiling = st["bri"]
+
                 self.phase = "descent"
                 if st["bri"] <= 0:
                     if not self._powered_off_at_min:
@@ -284,6 +308,7 @@ class Engine:
 
             self.phase = "idle"
             self._powered_off_at_min = False
+            self._descent_ceiling = None
 
     def _emit(self, st: dict, source: str) -> None:
         if st == self._last_state:
