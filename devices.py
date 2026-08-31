@@ -148,11 +148,23 @@ class LifxLanDevice(Device):
 
 # Per-SKU diffuser correction: the Govee H6022 "table" unit renders colors
 # less saturated than the H6076 "floor" unit at identical instructed RGB.
-# Force full saturation on this SKU whenever a saturated color is sent.
-# NOTE: brightness-based theories (scaling down OR flooring up) were both
-# tried 2026-08-30 and neither reliably fixed whitewash on this SKU across
-# presets — see PRESETS device_overrides in api.py for the empirical,
-# per-preset table-lamp values Cody actually confirmed by eye instead.
+# Force full saturation on this SKU — but ONLY when the true (unboosted)
+# sat is already substantial (>= FULL_SAT_MIN_SAT). All of our real preset
+# commands sit at sat >= 65 already, so this doesn't change their look.
+#
+# BUG (2026-08-30, found live at 9:01pm): the Descent engine's anchor
+# interpolation smoothly ramps sat from one anchor to the next — e.g. the
+# default "sundown" anchor (sat=0) into "honey" (sat=70) — producing
+# transitional values like sat=1, 4, 7, 14 as the minutes tick by. An
+# earlier version of this bias unconditionally forced ANY sat > 0 to 100%,
+# so the moment interpolation ticked past sat=0 (with hue still near 0°,
+# i.e. red), the table lamp got shoved to full-saturation pure red for
+# several minutes before settling into honey-gold — Cody saw this as "the
+# table lamp turned pure red for no reason" during a routine schedule
+# transition. Gating the force on a sat threshold fixes it: low,
+# transitional sat values pass through close to their true (near-white)
+# appearance instead of being amplified into a fully saturated wrong color.
+GOVEE_FULL_SAT_MIN_SAT = 50
 GOVEE_WASHOUT_SKU_BIAS = {
     "H6022": {"force_full_sat": True},
 }
@@ -288,7 +300,7 @@ class GoveeDevice(Device):
             if hue < 70 or hue > 340:  # warm territory
                 eff_hue = max(0, hue - 6)
                 eff_sat = min(100, int(sat * 1.30))
-            if bias.get("force_full_sat"):
+            if bias.get("force_full_sat") and sat >= GOVEE_FULL_SAT_MIN_SAT:
                 eff_sat = 100
             rgb_int = hsbk_to_rgb_int(eff_hue, eff_sat, bri)
             r, g, b = (rgb_int >> 16) & 0xFF, (rgb_int >> 8) & 0xFF, rgb_int & 0xFF

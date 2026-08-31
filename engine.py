@@ -134,11 +134,27 @@ class Engine:
             self._save()
 
     def notice_manual_change(self) -> None:
-        """Manual override during a descent/ascent → excursion (spec §4.1)."""
+        """Manual override during a descent/ascent → excursion (spec §4.1).
+
+        Computes the CURRENT window live (via _segment_at/_ascent_state_at)
+        rather than trusting self.phase, which is only refreshed by the
+        once-a-minute scheduled tick. BUG (2026-08-30): right after any
+        server restart self.phase starts as 'idle' regardless of the actual
+        time of day, so a manual preset/brightness change made before the
+        first tick fired didn't register as an excursion — the very next
+        tick would then silently overwrite the user's manual choice with
+        the scheduled trajectory value. Observed live: Cody tapped Relax at
+        21:05 (inside the sundown→honey descent window) right after a
+        restart; the tick 60s later overwrote it back to interpolated
+        descent values because notice_manual_change() saw stale phase
+        'idle' and no-opped."""
         with self._lock:
-            if self.phase in ("descent", "ascent"):
+            mins = self._now_minutes()
+            in_ascent = self._ascent_state_at(mins) is not None
+            in_descent = self._segment_at(mins) is not None
+            if in_ascent or in_descent:
                 self.phase = "excursion"
-                nxt = self._next_anchor_after(self._now_minutes())
+                nxt = self._next_anchor_after(mins)
                 self.excursion_until = nxt["time"] if nxt else None
                 self._journal({"event": "excursion",
                                "resume_at": self.excursion_until})

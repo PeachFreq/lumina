@@ -144,6 +144,53 @@ response overwriting a newer client-side optimistic update), not a
 one-shot logic bug — check every periodic poll and background actor
 (engine ticks, other timers) that could write to the same state field.
 
+## Descent engine bugs found live during evening testing (2026-08-30, 9pm)
+Cody caught two real, independent bugs while the automated evening
+schedule was quietly running under all our preset testing (it's been
+armed the whole session — this is a pre-existing feature, not something
+introduced today):
+
+**Bug A — pure red flash during a scheduled transition.** The default
+anchors interpolate "sundown" (hue 0, sat 0 — a white command) into
+"honey" (hue 45, sat 70) over 30 minutes. `GOVEE_WASHOUT_SKU_BIAS`'s
+`force_full_sat` on the H6022 table lamp was unconditionally snapping
+ANY sat > 0 to 100% — so the instant interpolation ticked past sat=0
+(with hue still near 0°, i.e. red), the table lamp got shoved to fully
+saturated pure red for several minutes before settling into gold. Fixed
+by gating the force behind `GOVEE_FULL_SAT_MIN_SAT = 50` — real preset
+commands are all sat >= 65 already, so this only skips the correction
+for near-zero transitional values during interpolation, letting them
+render close to their true (near-white) look instead of getting
+amplified into a wrong saturated color. General lesson: any "correct
+this hue/sat" bias needs to consider the full range of values that can
+reach it, not just the discrete preset values it was designed against —
+the Descent engine's continuous interpolation exercises values no
+preset ever sends directly.
+
+**Bug B — manual changes silently overwritten after a server restart.**
+`Engine.notice_manual_change()` (called by every preset tap, custom
+apply, and the brightness slider) only converted phase to "excursion"
+if `self.phase` was ALREADY "descent"/"ascent" — but that field is only
+updated by the once-a-minute scheduled tick, and starts as "idle" on
+every fresh engine init regardless of actual time of day. So a manual
+change made right after any backend restart (which happens whenever we
+edit and redeploy code) would not protect itself, and the very next
+tick 60s later would silently overwrite it back to the interpolated
+schedule value — Cody tapped Relax at 21:05 right after a restart, saw
+it look fine, then a minute later the lights changed on their own.
+Fixed: `notice_manual_change()` now computes whether "right now" falls
+inside a descent/ascent window directly (via `_segment_at`/
+`_ascent_state_at`), instead of trusting the possibly-stale `self.phase`
+field. Verified live: preset tap immediately after restart now shows
+`phase: excursion` right away, and holds through a real 75s+ tick with
+the lamp's actual RGB/brightness unchanged.
+
+Lesson: whenever a restart happens during an active
+automation window, assume any "was this manual?" check based on cached
+in-memory phase is stale until proven otherwise — recompute from wall
+clock + the schedule data, don't trust a flag that's only refreshed by
+the same timer you're trying to guard against.
+
 ## Device rack solo bug fix (2026-08-30)
 Holding a lamp row for 600ms sets it solo (all other lamps stop
 receiving commands). There was no way to undo this from the UI — fixed
